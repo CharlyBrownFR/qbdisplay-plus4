@@ -1,0 +1,24 @@
+# qbdisplay – Display-Software für QIDI Plus4 (ersetzt makerbase-client/xindi)
+# Copyright (C) 2026 STRE – GNU GPLv3
+#
+# Installation: siehe systemd/HINWEISE.md (nicht automatisch ausführen!)
+
+[Unit]
+Description=qbdisplay - Touch-Display QIDI Plus4
+After=moonraker.service
+Wants=moonraker.service
+Conflicts=makerbase-client.service
+
+[Service]
+Type=simple
+User=mks
+SupplementaryGroups=dialout tty
+WorkingDirectory=/home/mks/qbdisplay
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m qbdisplay -c /home/mks/printer_data/config/qbdisplay.cfg
+Restart=always
+RestartSec=3
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

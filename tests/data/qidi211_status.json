@@ -1,0 +1,256 @@
+{
+ "box_extras": {
+  "buffer": {
+   "hall0_adc": 0,
+   "hall1_adc": 0,
+   "photo0": false,
+   "photo1": false,
+   "version": ""
+  },
+  "last_load_slot": "slot16",
+  "loaded_slot": "slot16",
+  "boxes": [
+   {
+    "aht20_humidity": 54,
+    "aht20_temp": 16.56,
+    "box_target_temp": 0.0,
+    "hall_pulses": 0,
+    "box_inserted_0": 1,
+    "box_inserted_1": 1,
+    "box_inserted_2": 1,
+    "box_inserted_3": 0,
+    "filament_inserted_0": 0,
+    "filament_inserted_1": 0,
+    "filament_inserted_2": 0,
+    "filament_inserted_3": 0,
+    "limit_load_change_count": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "limit_4in1_change_count": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "is_online": 1,
+    "dry_state": 0,
+    "end_time": 0,
+    "test_date": {
+     "box_instert_state": "0000",
+     "filament_instert_state": "0000",
+     "box_instert_change_count": "00,00,00,00",
+     "filament_instert_change_count": "00,00,00,00"
+    },
+    "slots": [
+     {
+      "index": 0,
+      "vendor": 1,
+      "type": 1,
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "color_rgb": 1,
+      "temp": 1
+     },
+     {
+      "index": 1,
+      "vendor": 1,
+      "type": 1,
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "color_rgb": 1,
+      "temp": 1
+     },
+     {
+      "index": 2,
+      "vendor": 1,
+      "type": 1,
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "color_rgb": 1,
+      "temp": 1
+     },
+     {
+      "index": 3,
+      "vendor": 1,
+      "type": 1,
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "color_rgb": 1,
+      "temp": 1
+     }
+    ],
+    "filament_info": [
+     {
+      "index": 0,
+      "filament_id": "QFG02",
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "vendor_str": "QIDI",
+      "filament_str": "PETG Rapido",
+      "filament_type": "PETG",
+      "color_rgb_str": [
+       "#1714B0"
+      ],
+      "filament_per": 100,
+      "min_temp": 240,
+      "max_temp": 275,
+      "box_min_temp": 0,
+      "box_max_temp": 45
+     },
+     {
+      "index": 1,
+      "filament_id": "QFG02",
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "vendor_str": "QIDI",
+      "filament_str": "PETG Rapido",
+      "filament_type": "PETG",
+      "color_rgb_str": [
+       "#FF362D"
+      ],
+      "filament_per": 100,
+      "min_temp": 240,
+      "max_temp": 275,
+      "box_min_temp": 0,
+      "box_max_temp": 45
+     },
+     {
+      "index": 2,
+      "filament_id": "QFB01",
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "vendor_str": "QIDI",
+      "filament_str": "ASA",
+      "filament_type": "ASA",
+      "color_rgb_str": [
+       "#FAFAFA"
+      ],
+      "filament_per": 100,
+      "min_temp": 240,
+      "max_temp": 280,
+      "box_min_temp": 0,
+      "box_max_temp": 45
+     },
+     {
+      "index": 3,
+      "filament_id": "QFG02",
+      "info_from_rfid": 0,
+      "read_rfid_state": 0,
+      "vendor_str": "QIDI",
+      "filament_str": "PETG Rapido",
+      "filament_type": "PETG",
+      "color_rgb_str": [
+       "#FF362D"
+      ],
+      "filament_per": 100,
+      "min_temp": 240,
+      "max_temp": 275,
+      "box_min_temp": 0,
+      "box_max_temp": 45
+     }
+    ]
+   }
+  ],
+  "auto_refill": [],
+  "box_button_state": 0,
+  "b_endstop_state": 1,
+  "e_endstop_state": 0
+ },
+ "box_stepper slot0": {
+  "runout_button": 0,
+  "rfid_state": 0
+ },
+ "box_stepper slot1": {
+  "runout_button": 0,
+  "rfid_state": 0
+ },
+ "box_stepper slot2": {
+  "runout_button": 0,
+  "rfid_state": 0
+ },
+ "box_stepper slot3": {
+  "runout_button": 1,
+  "rfid_state": 0
+ },
+ "multi_color_controller": {
+  "task": {},
+  "box_warning_info": [],
+  "filament_dry_extra": {},
+  "extruder_limit_state": false,
+  "auto_init_detect": 1,
+  "auto_read_rfid": 1,
+  "auto_reload_detect": 0,
+  "enable_box": 1,
+  "load_retry_num": 0,
+  "box_count": 1,
+  "operation": {
+   "box_button_state": 0,
+   "operate_state": 0,
+   "active_slot": "slot16"
+  }
+ },
+ "save_variables": {
+  "variables": {
+   "auto_init_detect": 1,
+   "auto_read_rfid": 1,
+   "box_count": 1,
+   "color_slot0": 11,
+   "color_slot1": 18,
+   "color_slot2": 1,
+   "color_slot3": 18,
+   "enable_box": 1,
+   "filament_slot0": 41,
+   "filament_slot1": 41,
+   "filament_slot2": 18,
+   "filament_slot3": 41,
+   "last_load_slot": "slot-1",
+   "slot0": 1,
+   "slot1": 1,
+   "slot2": 1,
+   "slot3": 0,
+   "slot_sync": "slot-1",
+   "value_t0": "slot0",
+   "value_t1": "slot1",
+   "value_t2": "slot2",
+   "value_t3": "slot2",
+   "vendor_slot0": 1,
+   "vendor_slot1": 1,
+   "vendor_slot2": 1,
+   "vendor_slot3": 1
+  }
+ },
+ "aht20_f heater_box1": {
+  "temperature": 16.56,
+  "humidity": 54
+ },
+ "heater_generic heater_box1": {
+  "temperature": 16.56,
+  "target": 0.0,
+  "power": 0.0
+ },
+ "filament_motion_sensor box_motion_sensor": {
+  "filament_detected": true,
+  "enabled": false
+ },
+ "filament_switch_sensor fila": {
+  "filament_detected": true,
+  "enabled": false
+ },
+ "hall_filament_width_sensor": {
+  "Diameter": -0.2475880005782043,
+  "Raw": 11191,
+  "is_active": false
+ },
+ "extruder": {
+  "temperature": 23.5,
+  "target": 0.0,
+  "power": 0.0,
+  "can_extrude": false,
+  "pressure_advance": 0.032,
+  "smooth_time": 0.03,
+  "motion_queue": null
+ }
+}
