@@ -22,6 +22,25 @@ API="http://127.0.0.1:7125"
 say()  { printf '\n== %s\n' "$*"; }
 fail() { printf '\nFEHLER: %s\n' "$*" >&2; exit 1; }
 
+# Ein schlafendes Display nimmt kein Update an (QIDIs Programm wartet dann endlos).
+# Darum vorher wecken und den Ruhezustand abschalten. Die Leitung muss frei sein.
+wake_display() {
+  sudo systemctl stop makerbase-client qbdisplay 2>/dev/null || true
+  python3 - <<'PY' || echo "Hinweis: Display antwortet nicht (läuft trotzdem weiter)"
+import os, termios, time
+fd = os.open('/dev/ttyS1', os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+a = termios.tcgetattr(fd)
+a[0] = a[1] = a[3] = 0
+a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
+a[4] = a[5] = termios.B115200
+termios.tcsetattr(fd, termios.TCSANOW, a)
+for cmd in (b'sleep=0', b'thsp=0'):
+    os.write(fd, cmd + b'\xff\xff\xff')
+    time.sleep(0.3)
+os.close(fd)
+PY
+}
+
 say "Prüfungen"
 [ -f "$TFT" ] || fail "Display-Datei $TFT fehlt"
 [ -d "$DIR/qbdisplay" ] || fail "Programmordner $DIR/qbdisplay fehlt (im entpackten Paket starten)"
@@ -65,7 +84,7 @@ else
 fi
 
 say "Display-Datei aufspielen (ca. 2 min, Display bleibt solange dunkel)"
-sudo systemctl stop qbdisplay 2>/dev/null || true
+wake_display
 sudo cp "$TFT" /root/800_480.tft
 sync
 sudo systemctl restart makerbase-client
