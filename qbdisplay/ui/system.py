@@ -153,6 +153,16 @@ class SystemPage(Page):
 
     def build_box(self, frame):
         ctx = self.ctx
+        if not ctx.has_box:
+            self._row(frame, 'r.nobox', 52, _('Keine QIDI Box verbunden'),
+                      _('Gedruckt wird von der externen Spule'))
+            self._row(frame, 'r.nobox2', 136, _('Box anstecken'),
+                      _('QIDI erkennt sie selbst, Klipper startet dabei neu'))
+            fl = ctx.flist
+            self._row(frame, 'r.list', 220, _('Materialliste'),
+                      _('%d Materialien, %d Farben, %d Hersteller') % (
+                          len(fl.filaments), len(fl.colors), len(fl.vendors)))
+            return
         mmu = ctx.st.mmu
         es = bool(mmu.get('endless_spool_enabled', mmu.get('endless_spool', 0)))
         self._row(frame, 'r.es', 52, _('Automatisch nachladen'),

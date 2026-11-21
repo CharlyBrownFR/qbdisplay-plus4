@@ -34,6 +34,10 @@ STATE_CHIP = {
 def card_texts(s):
     """(Titel, Untertitel, Bereich, Titelfarbe) einer Slot-Karte."""
     if s.index == model.HH_GATE_BYPASS:
+        if s.material:
+            return (s.name, s.color_name or _('Spule hinten'),
+                    _('In Düse') if s.state == 'loaded' else model.temp_range_text(s.temps),
+                    'text')
         return (_('Extern'), _('Spule hinten'),
                 _('In Düse') if s.state == 'loaded' else _('nicht belegt'), 'text2')
     if s.state == 'empty':
@@ -47,7 +51,7 @@ def card_texts(s):
 
 
 def paint_card(c, r, s, selected, accent):
-    empty = s.state in ('empty',) or s.index == model.HH_GATE_BYPASS and s.state != 'loaded'
+    empty = s.state == 'empty'
     face = 'tint' if selected else 'surface'
     if selected:
         W.glow_box(c, r, 14, face, 'accent', 'bg', halo=2, bw=2)
@@ -80,12 +84,21 @@ class BoxPage(Page):
 
     def build_content(self, frame):
         ctx = self.ctx
-        slots = ctx.slots
-        cards = [ctx.rack] + slots
+        if not ctx.has_box:
+            self.build_external(frame)
+            return
+        units = ctx.box_units
+        unit = ctx.ui.get('box_unit')
+        if unit not in units:
+            unit = units[0]
+        lg = ctx.loaded_gate
         sel = ctx.ui.get('sel_slot')
         if sel is None:
-            sel = ctx.loaded_gate if ctx.loaded_gate is not None else 0
-        lg = ctx.loaded_gate
+            sel = lg if lg is not None else unit * 4
+            if sel >= 0 and sel // 4 != unit:
+                sel = unit * 4
+        slots = [s for s in ctx.slots if s.index // 4 == unit]
+        cards = [ctx.rack] + slots
         for i, s in enumerate(cards):
             rect = Rect(100 + i * 138, 52, 130, 216)
             selected = s.index == sel
@@ -103,11 +116,55 @@ class BoxPage(Page):
         if cur is None:
             cur = cards[1]
         self.build_actions(frame, cur, lg)
-        self.build_climate(frame)
+        self.build_climate(frame, unit, units)
 
-    def build_actions(self, frame, s, lg):
+    def build_external(self, frame):
+        """Betrieb ohne QIDI Box: nur die externe Spule hinten am Drucker."""
         ctx = self.ctx
-        tile = Rect(100, 280, 460, 188)
+        s = ctx.rack
+        lg = ctx.loaded_gate
+        loaded = s.state == 'loaded'
+        card = Rect(100, 52, 300, 416)
+        title, sub, rng, tfg = card_texts(s)
+        vendor = s.vendor or ''
+
+        def paint_ext(c, r):
+            if loaded:
+                W.glow_box(c, r, 14, 'surface', 'accent', 'bg', halo=2, bw=2)
+            else:
+                W.tile(c, r)
+            W.header(c, r, 'spool', _('Externe Spule'), x=r.x + 14)
+            if loaded:
+                W.chip(c, r.x2 - 14, r.y + 14, _('In Düse'), 'loaded', 'surface', fid=F.CAP,
+                       h=26, right=True)
+            W.spool(c, r.cx, r.y + 150, 64, s.color, 'loaded' if loaded else 'ready',
+                    'surface', accent_ring=loaded)
+            c.text(r.x + 10, r.y + 236, r.w - 20, 32, title, F.VAL, tfg, 'surface', 'center')
+            c.text(r.x + 10, r.y + 274, r.w - 20, 20, ' · '.join(
+                x for x in (sub, vendor) if x), F.LBL, 'text2', 'surface', 'center')
+            c.text(r.x + 10, r.y + 300, r.w - 20, 18, model.temp_range_text(s.temps), F.CAP,
+                   'text3', 'surface', 'center')
+            c.fill(r.x + 14, r.y + 336, r.w - 28, 1, 'line')
+            W.text_lines(c, r.x + 14, r.y + 350, r.w - 28,
+                         _('Material und Farbe stellst du im Slicer oder in QIDIs '
+                           'Weboberfläche ein.'), F.CAP, 'text3', 'surface', max_lines=3)
+        frame.region('ext.card', card, (tuple(s), loaded), paint_ext)
+
+        info = Rect(412, 52, 372, 196)
+
+        def paint_info(c, r):
+            W.tile(c, r)
+            W.header(c, r, 'box', _('Keine QIDI Box verbunden'), x=r.x + 14)
+            W.text_lines(c, r.x + 16, r.y + 54, r.w - 32,
+                         _('Gedruckt wird von der Spule hinten am Drucker. Wird die Box '
+                           'angesteckt, erkennt QIDI sie selbst und hier erscheinen '
+                           'wieder ihre Slots.'), F.TEXT, 'text2', 'surface', max_lines=5)
+        frame.region('ext.info', info, 'nobox', paint_info)
+        self.build_actions(frame, s, lg, tile=Rect(412, 260, 372, 208), side=False)
+
+    def build_actions(self, frame, s, lg, tile=None, side=True):
+        ctx = self.ctx
+        tile = tile or Rect(100, 280, 460, 188)
         printing = ctx.pstate in ('printing', 'paused', 'paused_error')
         is_rack = s.index == model.HH_GATE_BYPASS
         src = None
@@ -124,8 +181,10 @@ class BoxPage(Page):
         elif s.state == 'loaded':
             label, icon = _('Aus Düse entladen'), 'up'
             action = ctx.unload
-            desc = _('Die Düse heizt auf, das Filament wird zurück in %s gezogen. '
-                     'Dauer ca. 1-2 min.') % (_('den Slot') if is_rack else s.letter)
+            desc = (_('Die Düse heizt auf, das Filament wird aus dem Extruder gezogen. '
+                      'Dauer ca. 1-2 min.') if is_rack else
+                    _('Die Düse heizt auf, das Filament wird zurück in %s gezogen. '
+                      'Dauer ca. 1-2 min.') % s.letter)
         elif is_rack:
             label = _('Rack in Düse laden')
             action = ctx.load_rack
@@ -159,7 +218,7 @@ class BoxPage(Page):
         frame.region('act', tile, (title, desc, s.color), paint_tile)
         can_edit = not is_rack
         can_eject = (not is_rack) and s.state in ('ready', 'loaded', 'unknown') and not printing
-        pw = tile.w - 32 - 2 * 72
+        pw = tile.w - 32 - (2 * 72 if side else 0)
         prim = Rect(tile.x + 16, tile.y2 - 14 - 64, pw, 64)
         pressed = ctx.pressed == 'act.main'
 
@@ -168,6 +227,8 @@ class BoxPage(Page):
         frame.region('act.main', prim, (label, kind, pressed), paint_prim, clear='surface')
         if action is not None and kind != 'disabled':
             frame.target('act.main', prim, action)
+        if not side:
+            return
         for j, (tid, ic, ok, act) in enumerate((
                 ('act.edit', 'edit', can_edit, lambda: ctx.open_slot_edit(s.index)),
                 ('act.eject', 'eject', can_eject, lambda: ctx.confirm_eject(s.index)))):
@@ -184,23 +245,31 @@ class BoxPage(Page):
             if ok:
                 frame.target(tid, br, act)
 
-    def build_climate(self, frame):
+    def build_climate(self, frame, unit=0, units=(0,)):
         ctx = self.ctx
         tile = Rect(572, 280, 212, 188)
-        temp, target, hum, heating = ctx.climate
-        mats = [s.material for s in ctx.slots if s.state != 'empty']
+        temp, target, hum, heating = ctx.unit_climate(unit)
+        mats = [s.material for s in ctx.slots if s.state != 'empty' and s.index // 4 == unit]
         level, rating = model.humidity_rating(hum, mats)
         dv = ctx.drying
-        if dv.active:
+        multi = len(units) > 1
+        can_dry = unit == 0     # Trocknung bisher nur für Box 1 (weitere ungetestet)
+        if unit != 0:
+            line = _('Trocknet') if heating else (rating if hum is not None else '')
+        elif dv.active:
             line = _('Trocknet · noch %s') % model.fmt_duration(dv.remaining, 'clock') \
                 if dv.known else _('Trocknung läuft')
         else:
             line = rating if hum is not None else _('Trocknung aus')
         hfg = {'ok': 'ok', 'warn': 'warn', 'err': 'err'}.get(level, 'text')
 
+        btitle = _('Box %d') % (unit + 1)
+
         def paint(c, r):
             W.tile(c, r)
-            W.header(c, r, 'box', _('Box 1'), x=r.x + 14)
+            W.header(c, r, 'box', btitle, x=r.x + 14)
+            if multi:
+                c.icon('chev', r.x2 - 14 - 20, r.y + 15, 20, 'accent', 'surface')
             x = W.value_unit(c, r.x + 14, r.y + 46, 32, model.fmt_temp(temp), ' °C', F.VAL,
                              F.LBL, 'text', 'surface')
             c.fill(x + 12, r.y + 52, 1, 24, 'line')
@@ -209,8 +278,25 @@ class BoxPage(Page):
             c.text(r.x + 14, r.y + 86, r.w - 28, 18, line, F.CAP,
                    'heat' if dv.active else ('warn' if level in ('warn', 'err') else 'text3'),
                    'surface')
-        frame.region('clim', tile, (model.fmt_temp(temp), model.fmt_temp(hum), line, hfg), paint)
+        frame.region('clim', tile, (btitle, multi, model.fmt_temp(temp), model.fmt_temp(hum),
+                                    line, hfg), paint)
+        if multi:
+            nxt = units[(units.index(unit) + 1) % len(units)]
+            frame.target('clim.next', Rect(tile.x, tile.y, tile.w, 96),
+                         (lambda u=nxt: ctx.set_ui(box_unit=u, sel_slot=None)))
         br = Rect(tile.x + 14, tile.y2 - 14 - 56, tile.w - 28, 56)
+        if not can_dry and not multi:
+            return
+        if not can_dry:
+            # weitere Boxen: statt Trocknen zur nächsten Box blättern
+            prn = ctx.pressed == 'clim.next'
+
+            def paint_n(c, r):
+                W.button(c, r, _('Weiter: Box %d') % (nxt + 1), 'secondary', None, 'surface',
+                         fid=F.BTN, pressed=prn)
+            frame.region('dry', br, ('next', nxt, prn), paint_n, clear='surface')
+            frame.target('clim.next', br, (lambda u=nxt: ctx.set_ui(box_unit=u, sel_slot=None)))
+            return
         pr = ctx.pressed == 'dry'
 
         def paint_b(c, r):

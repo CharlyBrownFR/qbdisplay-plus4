@@ -190,7 +190,10 @@ class HomePage(Page):
         fil = Rect(548, 192, 236, 200)
         slots = ctx.slots
         lg = ctx.loaded_gate
-        key = tuple((s.state, s.color) for s in slots) + (lg, ctx.climate[0] is None and -1 or
+        has_box = ctx.has_box
+        rack = ctx.rack
+        key = (has_box, tuple(rack)) + tuple((s.state, s.color) for s in slots) + (
+            lg, ctx.climate[0] is None and -1 or
                                                           int(round(ctx.climate[0])),
                                                           ctx.climate[2] is None and -1 or
                                                           int(round(ctx.climate[2])))
@@ -201,15 +204,24 @@ class HomePage(Page):
             W.header(c, r, 'spool', _('Filament'), x=r.x + 14)
             c.icon('chev', r.x2 - 14 - 20, r.y + 15, 20, 'text3', 'surface')
             n = len(slots)
+            if not has_box:
+                # ohne Box: die externe Spule
+                act = lg == model.HH_GATE_BYPASS
+                mini_spool(c, r.x + 14 + 22, r.y + 74, 20, rack.color, act, 'surface')
+                c.text(r.x + 72, r.y + 56, r.w - 86, 22, rack.name, F.BTN, 'text', 'surface')
+                c.text(r.x + 72, r.y + 82, r.w - 86, 18, _('Externe Spule'), F.CAP, 'text3',
+                       'surface')
             span = r.w - 28 - 36
+            rad = 16 if n <= 4 else max(7, span // max(1, n - 1) // 2 - 1)
             for i, s in enumerate(slots):
                 cx = r.x + 14 + 18 + (span * i // max(1, n - 1))
                 cy = r.y + 70
                 act = lg == s.index
                 empty = s.state in ('empty', 'unknown') or not s.color
-                mini_spool(c, cx, cy, 16, None if empty else s.color, act, 'surface')
+                mini_spool(c, cx, cy, rad, None if empty else s.color, act, 'surface')
                 fg = 'accent' if act else ('text3' if s.state == 'empty' else 'text2')
-                c.text(cx - 15, cy + 23, 30, 18, s.letter, F.LBL, fg, 'surface', 'center')
+                c.text(cx - 15, cy + 23, 30, 18, s.letter, F.LBL if n <= 4 else F.CAP, fg,
+                       'surface', 'center')
             c.fill(r.x + 14, r.y + 122, r.w - 28, 1, 'line')
             c.text(r.x + 14, r.y + 132, r.w - 28, 18, W.caps(_('In der Düse')), F.CAP, 'text3',
                    'surface')
@@ -217,13 +229,17 @@ class HomePage(Page):
                 s = slots[lg]
                 txt = '%s · %s' % (s.letter, s.name or s.material or '?')
             elif lg == model.HH_GATE_BYPASS:
-                txt = _('Rack (extern)')
+                txt = _('Rack (extern)') if not rack.material else _('Extern · %s') % rack.name
             else:
                 txt = _('leer')
             c.text(r.x + 14, r.y + 150, r.w - 28, 22, txt, F.LBL, 'text', 'surface')
-            t, _t, h, heating = ctx.climate
-            c.text(r.x + 14, r.y + 174, r.w - 28, 18, _('Box %s °C · %s %% rF') % (
-                model.fmt_temp(t), model.fmt_temp(h)), F.CAP, 'text3', 'surface')
+            if has_box:
+                t, _t, h, heating = ctx.climate
+                c.text(r.x + 14, r.y + 174, r.w - 28, 18, _('Box %s °C · %s %% rF') % (
+                    model.fmt_temp(t), model.fmt_temp(h)), F.CAP, 'text3', 'surface')
+            else:
+                c.text(r.x + 14, r.y + 174, r.w - 28, 18, _('Keine QIDI Box verbunden'), F.CAP,
+                       'text3', 'surface')
         frame.region('filtile', fil, key + (pressed,), paint_fil)
         frame.target('filtile', fil, (lambda: ctx.go('filament')))
 
@@ -415,6 +431,8 @@ class HomePage(Page):
         ctx = self.ctx
         lg = ctx.loaded_gate
         s = slots[lg] if lg is not None and 0 <= lg < len(slots) else None
+        if lg == model.HH_GATE_BYPASS:
+            s = ctx.rack
         mmu = ctx.st.mmu
         done = int(mmu.get('num_toolchanges') or 0)
         total = int((mmu.get('slicer_tool_map') or {}).get('total_toolchanges') or 0)
@@ -427,18 +445,20 @@ class HomePage(Page):
             W.header(c, r, 'spool', _('Filament im Druck'))
             if s is not None:
                 W.spool(c, r.x + 52, r.y + 82, 26, s.color, 'loaded', 'surface', accent_ring=True)
-                c.text(r.x + 96, r.y + 58, r.w - 330, 26, '%s · %s' % (
-                    s.letter, s.name or s.material), F.BTN, 'text', 'surface')
+                head = (s.name if s.index == model.HH_GATE_BYPASS else
+                        '%s · %s' % (s.letter, s.name or s.material))
+                c.text(r.x + 96, r.y + 58, r.w - 330, 26, head, F.BTN, 'text', 'surface')
                 c.text(r.x + 96, r.y + 88, r.w - 330, 20, line2, F.TEXT, 'text2', 'surface')
             else:
                 c.text(r.x + 16, r.y + 60, r.w - 32, 20, line2, F.TEXT, 'text2', 'surface')
             # rechts: Belegung der Box
             n = len(slots)
-            x = r.x2 - 16 - n * 52 + 8
+            step, rad = (52, 16) if n <= 4 else (30, 11)
+            x = r.x2 - 16 - n * step + 8
             for i, sl in enumerate(slots):
-                cx = x + i * 52 + 22
+                cx = x + i * step + 22
                 empty = sl.state in ('empty', 'unknown') or not sl.color
-                mini_spool(c, cx, r.y + 70, 16, None if empty else sl.color, lg == sl.index,
+                mini_spool(c, cx, r.y + 70, rad, None if empty else sl.color, lg == sl.index,
                            'surface')
                 c.text(cx - 15, r.y + 92, 30, 18, sl.letter, F.LBL,
                        'accent' if lg == sl.index else 'text3', 'surface', 'center')

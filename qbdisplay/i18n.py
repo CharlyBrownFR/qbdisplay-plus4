@@ -172,7 +172,8 @@ EN = {
     'Aus Düse entladen': 'Unload from nozzle',
     'Die Düse heizt auf, das Filament wird zurück in %s gezogen. Dauer ca. 1-2 min.':
         'The nozzle heats up and the filament is pulled back into %s. Takes about 1-2 min.',
-    'den Slot': 'the slot',
+    'Die Düse heizt auf, das Filament wird aus dem Extruder gezogen. Dauer ca. 1-2 min.':
+        'The nozzle heats up, the filament is pulled out of the extruder. About 1-2 min.',
     'Rack in Düse laden': 'Load rack to nozzle',
     'Filament von der hinteren Spule bis zum Extruder einführen, dann laden.':
         'Feed filament from the rear spool up to the extruder, then load.',
@@ -189,7 +190,22 @@ EN = {
     'Trocknet · noch %s': 'Drying · %s left',
     'Trocknung läuft': 'Drying in progress',
     'Trocknung aus': 'Drying off',
-    'Box 1': 'Box 1',
+    'Box %d': 'Box %d',
+    'Weiter: Box %d': 'Next: box %d',
+    # Betrieb ohne Box (0.3.0)
+    'Externe Spule': 'External spool',
+    'Extern · %s': 'External · %s',
+    'Keine QIDI Box verbunden': 'No QIDI Box connected',
+    'Gedruckt wird von der Spule hinten am Drucker. Wird die Box angesteckt, erkennt QIDI sie '
+    'selbst und hier erscheinen wieder ihre Slots.':
+        'Printing uses the spool at the back of the printer. Plug in the box and QIDI detects '
+        'it by itself; its slots then show up here again.',
+    'Material und Farbe stellst du im Slicer oder in QIDIs Weboberfläche ein.':
+        'Set material and colour in the slicer or in QIDI\'s web interface.',
+    'Gedruckt wird von der externen Spule': 'Printing uses the external spool',
+    'Box anstecken': 'Plug in the box',
+    'QIDI erkennt sie selbst, Klipper startet dabei neu':
+        'QIDI detects it by itself; Klipper restarts',
     'Trocknung': 'Drying',
     'Trocknen': 'Dry',
     'Slot %s bearbeiten': 'Edit slot %s',

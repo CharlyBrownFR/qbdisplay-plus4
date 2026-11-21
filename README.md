@@ -11,6 +11,8 @@ wird nur QIDIs Display-Programm. Der Rückweg zur QIDI-Oberfläche ist ein Befeh
 - Druckübersicht mit Fortschritt, Restzeit, Farbwechsel-Schritten und Temperaturen
 - **QIDI Box** direkt am Display: Slots laden, entladen, auswerfen, Material/Farbe/Hersteller
   zuordnen, RFID lesen, „in der Düse“ auf einen Blick
+- **Mit oder ohne Box:** ohne Box zeigt die Filament-Seite die externe Spule; Box im Betrieb
+  an- oder abstecken wird erkannt. Mehrere Boxen (bis 4) lassen sich durchblättern
 - **Box-Trocknung** mit Profilen, Restzeit und Feuchte-Bewertung je Material
 - Bewegen, Dateien, Lüfter, Licht, Netzwerk-Status („Nur LAN“)
 - Deutsch und Englisch
@@ -18,7 +20,7 @@ wird nur QIDIs Display-Programm. Der Rückweg zur QIDI-Oberfläche ist ein Befeh
 
 ## Voraussetzungen
 
-- QIDI Plus4 mit QIDI-Firmware **2.1.1** (andere Versionen ungetestet)
+- QIDI Plus4 mit QIDI-Firmware **2.1.1** (andere Versionen ungetestet), QIDI Box optional
 - SSH-Zugang zum Drucker (Benutzer `mks`)
 - Kein laufender Druck während der Installation
 
@@ -52,6 +54,8 @@ Spielt die gesicherte QIDI-Display-Datei wieder auf (ca. 7 min) und startet QIDI
   Display zurück (ca. 7 min), dann wie gewohnt updaten, danach wieder `./install.sh`.
 - **QIDI-Cloud/App:** entfallen mit qbdisplay (QIDI Studio im LAN funktioniert weiter).
 - **Nach Stromausfall** fragt qbdisplay (noch) nicht nach dem Fortsetzen des Drucks.
+- **Mehrere Boxen:** Anzeige und Laden aller Boxen; Trocknen am Display bisher nur für Box 1.
+  Mangels zweiter Box noch nicht am Gerät getestet – Rückmeldungen willkommen.
 - Inoffizielles Projekt, nicht von QIDI. Nutzung auf eigene Gefahr.
 
 ## Selbst bauen
@@ -72,6 +76,8 @@ program is swapped. Going back to the QIDI UI is one command.
 - Print overview with progress, time left, colour-change steps and temperatures
 - **QIDI Box** on the display: load, unload, eject slots, assign material/colour/vendor,
   read RFID, see at a glance what is in the nozzle
+- **With or without a box:** without one, the filament page shows the external spool; plugging
+  the box in or out while running is detected. Several boxes (up to 4) can be paged through
 - **Box drying** with profiles, time left and humidity rating per material
 - Move, files, fans, light, network status ("LAN only")
 - English and German
@@ -79,7 +85,7 @@ program is swapped. Going back to the QIDI UI is one command.
 
 ## Requirements
 
-- QIDI Plus4 with QIDI firmware **2.1.1** (other versions untested)
+- QIDI Plus4 with QIDI firmware **2.1.1** (other versions untested), QIDI Box optional
 - SSH access to the printer (user `mks`)
 - No print running during installation
 
@@ -113,6 +119,8 @@ cd ~/qbdisplay && ./uninstall.sh
   update as usual, then run `./install.sh` again.
 - **QIDI cloud/app** are not available with qbdisplay (QIDI Studio on the LAN keeps working).
 - **After a power loss** qbdisplay does not (yet) offer to resume the print.
+- **Several boxes:** all boxes are shown and can be loaded; drying from the display covers box 1
+  only so far. Not yet tested on a printer with two boxes – feedback welcome.
 - Unofficial project, not affiliated with QIDI. Use at your own risk.
 
 ## License

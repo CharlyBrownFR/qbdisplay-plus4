@@ -46,7 +46,7 @@ def state_pill(ctx):
     if ps == 'printing':
         return _('Druckt · %d %%') % int(model.progress(ctx.st) * 100), 'run'
     dv = ctx.drying
-    if dv.active:
+    if dv.active and ctx.has_box:
         if dv.known:
             return _('Trocknet · %s') % model.fmt_duration(dv.remaining, 'clock'), 'run'
         return _('Trocknet'), 'run'
@@ -101,10 +101,13 @@ def build_statusbar(frame, ctx, title):
                  parent='sb.bg')
 
     temp, target, hum, heating = ctx.climate
-    ctext = '%s °C · %s %%' % (model.fmt_temp(temp), model.fmt_temp(hum))
+    has_box = ctx.has_box
+    ctext = '%s °C · %s %%' % (model.fmt_temp(temp), model.fmt_temp(hum)) if has_box else ''
     fg = 'heat' if heating else 'text2'
 
     def paint_climate(c, r):
+        if not has_box:
+            return       # ohne Box kein Box-Klima
         x = c.label_right(566, 10, ctext, F.LBL, fg, 'bar', h=20)
         c.icon('sun' if heating else 'box', x - 24, 11, 18, fg, 'bar')
     frame.region('sb.climate', Rect(420, 0, 156, STATUS_H - 1), (ctext, fg), paint_climate,

@@ -76,7 +76,8 @@ def subscribe_objects(cfg):
         objs.pop('mmu')
         objs['box_extras'] = None
         objs['multi_color_controller'] = ['task', 'operation', 'box_warning_info',
-                                          'auto_reload_detect', 'enable_box']
+                                          'auto_reload_detect', 'enable_box', 'box_count',
+                                          'extra']
     return objs
 
 
@@ -156,8 +157,37 @@ class App(object):
         return self._cached('drying', lambda: self.drying_tracker.view(self.climate, self.now))
 
     @property
+    def box_units(self):
+        """Angeschlossene Boxen (Indizes ab 0); leer = Betrieb ohne Box."""
+        return self._cached('units', lambda: model.box_units(self.st))
+
+    @property
+    def has_box(self):
+        return bool(self.box_units)
+
+    @property
     def slots(self):
-        return self._cached('slots', lambda: model.slots(self.st, self.flist, self.num_slots))
+        """Slots bis zur letzten angeschlossenen Box (Listenindex = Slot-Nummer); ohne Box leer."""
+        def build():
+            units = self.box_units
+            if not units:
+                return []
+            n = max(self.num_slots, 4 * (max(units) + 1))
+            return model.slots(self.st, self.flist, n)
+        return self._cached('slots', build)
+
+    def unit_climate(self, unit):
+        """(temp, target, humidity, heating) einer Box; Box 1 über die konfigurierten Sensoren,
+        weitere direkt aus dem QIDI-Box-Status."""
+        if unit == 0:
+            return self.climate
+        boxes = self.st.obj('box_extras').get('boxes') or []
+        b = boxes[unit] if unit < len(boxes) and isinstance(boxes[unit], dict) else {}
+        t, h = b.get('aht20_temp'), b.get('aht20_humidity')
+        target = model._num(b.get('box_target_temp'))
+        return (None if t is None else model._num(t), target,
+                None if h is None else model._num(h),
+                target > 0 or str(b.get('dry_state')) in ('1', 'True'))
 
     @property
     def rack(self):
@@ -244,6 +274,8 @@ class App(object):
     def go(self, name, **ui):
         if name == 'filament' and self.page_name == 'filament':
             self.ui['sel_slot'] = None
+        if name in ('drying', 'slot_edit') and not self.has_box:
+            name = 'filament'
         if name == 'drying':
             self.ui['dry_edit'] = False
             self.ui.pop('dry', None)
@@ -933,6 +965,12 @@ class App(object):
         now = self.now
         self.toolchange_tracker.update(self.st, now)
         self.drying_tracker.update(self.climate[1], now)
+        if not self.has_box and self.page_name in ('drying', 'slot_edit'):
+            # Box im Betrieb abgezogen: zurück auf die Filament-Seite (dort nur externe Spule)
+            self.page_name = 'filament'
+        units = self.box_units
+        if units and self.ui.get('box_unit') not in units:
+            self.ui['box_unit'] = units[0]
         fn = self.st.get('print_stats', 'filename')
         if fn and (self.current_meta is None or self.current_meta.get('_fn') != fn):
             meta = self._meta.get(fn)

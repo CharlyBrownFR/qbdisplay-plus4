@@ -20,6 +20,11 @@ QIDI-Objekten nach (Stand 2.1.1, am Gerät gelesen 2026-11-20):
   ``auto_reload_detect``
 - ``save_variables``: ``value_tN`` = "slotM" (Werkzeug -> Slot)
 
+Ohne Box (USB abgezogen, am Gerät getestet 2026-11-21): QIDI kommentiert die Box in
+``box.cfg`` aus und startet Klipper neu; dann ist ``boxes`` leer, ``loaded_slot`` leer und
+``multi_color_controller.box_count`` 0. Die externe Spule steht in
+``multi_color_controller.extra.filament_info`` (auch mit Box).
+
 Slot-Nummern: Box b hat die Slots 4*b .. 4*b+3; ``slot16`` ist die externe Spule (Rack).
 """
 
@@ -50,6 +55,33 @@ def _flag(v):
     return str(v) in ('1', 'True', 'true')
 
 
+def units_online(st):
+    """Indizes der angeschlossenen Boxen (leer = ohne Box)."""
+    boxes = _boxes(st)
+    online = [i for i, b in enumerate(boxes) if _flag(b.get('is_online', 1))]
+    count = st.obj('multi_color_controller').get('box_count')
+    if count is not None and not boxes:
+        return list(range(int(count))) if str(count).isdigit() else []
+    return online
+
+
+def external_info(st):
+    """Externe Spule (Rack) -> dict wie ein Slot (name, material, color, vendor, temps)."""
+    extra = st.obj('multi_color_controller').get('extra') or {}
+    info = extra.get('filament_info') or {}
+    if not isinstance(info, dict):
+        return {}
+    cols = info.get('color_rgb_str') or []
+    lo, hi = info.get('min_temp'), info.get('max_temp')
+    return {
+        'name': info.get('filament_str') or '',
+        'material': info.get('filament_type') or '',
+        'color': (cols[0] if isinstance(cols, list) and cols else cols or '') or '',
+        'vendor': info.get('vendor_str') or '',
+        'temps': (int(lo), int(hi)) if lo and hi else None,
+    }
+
+
 def _action(mcc):
     """Laufender Box-Ablauf als Happy-Hare-Aktion. Das Format von ``task`` ist noch nicht
     im Betrieb mitgeschnitten [prüfen]; erkannt wird alles, was nach Laden/Entladen/
@@ -72,10 +104,12 @@ def _action(mcc):
 def synth_mmu(st, num_slots=4):
     """Happy-Hare-ähnliches ``mmu``-Objekt aus dem QIDI-Status (leeres dict ohne Box)."""
     be = st.obj('box_extras')
-    if not be:
-        return {}
     mcc = st.obj('multi_color_controller')
+    if not be and not mcc:
+        return {}
+    # ohne Box entfernt QIDI box_extras ganz aus der Config; dann bleibt nur mcc
     boxes = _boxes(st)
+    num_slots = max(num_slots, 4 * len(boxes))
     gate_status, material, name, color, vendor, temps = [], [], [], [], [], []
     for i in range(num_slots):
         b = boxes[i // 4] if i // 4 < len(boxes) else {}
@@ -92,7 +126,13 @@ def synth_mmu(st, num_slots=4):
         vendor.append(info.get('vendor_str') or '')
         lo, hi = info.get('min_temp'), info.get('max_temp')
         temps.append((int(lo), int(hi)) if lo and hi else None)
+    units = units_online(st)
     loaded = slot_number(be.get('loaded_slot'))
+    if loaded is None and not units and be.get('loaded_slot', '') == '':
+        # ohne Box bleibt loaded_slot leer; zuletzt aktiv ist dann die externe Spule
+        loaded = slot_number((mcc.get('operation') or {}).get('active_slot'))
+        if loaded is not None and loaded != SLOT_EXTERNAL:
+            loaded = None
     if loaded is None:
         gate, pos = GATE_UNKNOWN, POS_UNLOADED
     elif loaded == SLOT_EXTERNAL:
@@ -125,5 +165,7 @@ def synth_mmu(st, num_slots=4):
         'drying_end': [int(b.get('end_time') or 0) for b in boxes],
         'endless_spool_enabled': 1 if _flag(mcc.get('auto_reload_detect')) else 0,
         'reason_for_pause': '; '.join(str(w) for w in warnings) if warnings else '',
+        'units_online': units,
+        'bypass_info': external_info(st),
         'source': 'qidi',
     }

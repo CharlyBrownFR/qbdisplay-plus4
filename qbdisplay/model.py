@@ -217,11 +217,32 @@ def slots(st, flist=None, num=4):
     return [slot_view(st, i, flist) for i in range(num)]
 
 
+def box_units(st):
+    """Angeschlossene Boxen (Indizes ab 0); leer = ohne Box, nur externe Spule.
+    Happy Hare meldet keine Einzel-Boxen: dort gilt eine Box, sobald ``mmu`` da ist."""
+    mmu = st.mmu
+    if 'units_online' in mmu:
+        return list(mmu.get('units_online') or [])
+    return [0] if mmu else []
+
+
+def unit_gates(units, per_unit=4):
+    """Slot-Nummern der angeschlossenen Boxen (Box b: 4*b .. 4*b+3)."""
+    return [u * per_unit + k for u in units for k in range(per_unit)]
+
+
 def rack_view(st):
     mmu = st.mmu
     loaded = mmu.get('gate') == HH_GATE_BYPASS and mmu.get('filament_pos') == HH_POS_LOADED
-    return SlotView(HH_GATE_BYPASS, 'Rack', 'loaded' if loaded else 'empty',
-                    '', _('Extern'), None, '', '', None)
+    info = mmu.get('bypass_info') or {}
+    color = colors.parse_filament_color(info.get('color')) if info.get('color') else None
+    name = info.get('name') or info.get('material') or _('Extern')
+    # mit hinterlegtem Material gilt die externe Spule als bereit (QIDI meldet keinen Sensor)
+    state = 'loaded' if loaded else ('ready' if info.get('material') else 'empty')
+    return SlotView(HH_GATE_BYPASS, 'Rack', state,
+                    info.get('material') or '', name, color,
+                    colors.color_name(color) if color else '', info.get('vendor') or '',
+                    info.get('temps'))
 
 
 def loaded_slot(st):

@@ -148,4 +148,9 @@ MANIFEST = [
     ('info', 20, 'text3', 'bg'),  # 136
     ('play', 28, 'on_accent', 'accent'),  # 137
     ('globe', 24, 'accent', 'tint'),  # 138
+    ('edit', 24, 'text3', 'surface'),  # 139
+    ('chev', 20, 'accent', 'surface'),  # 140
+    ('cloudoff', 18, 'warn', 'bar'),  # 141
+    ('layers', 30, 'text3', 'surface2'),  # 142
+    ('light', 24, 'text3', 'surface'),  # 143
 ]

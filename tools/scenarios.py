@@ -323,6 +323,96 @@ def s_system_language(app):
     app.go('system', sys_sub='lang')
 
 
+EXTERNAL = {'identity': 'external', 'filament_info': {
+    'filament_str': 'PLA Rapido', 'filament_type': 'PLA', 'color_rgb_str': ['#E8731A'],
+    'vendor_str': 'QIDI', 'min_temp': 190, 'max_temp': 240}}
+
+
+def _qidi_box(inserted, infos, online=1):
+    b = {'is_online': online, 'aht20_temp': 24.1, 'aht20_humidity': 38, 'dry_state': 0,
+         'box_target_temp': 0, 'end_time': 0, 'filament_info': []}
+    for k in range(4):
+        b['box_inserted_%d' % k] = 1 if k < inserted else 0
+        name, typ, col = infos[k] if k < len(infos) else ('', '', '')
+        b['filament_info'].append({'filament_str': name, 'filament_type': typ,
+                                   'color_rgb_str': [col] if col else [], 'vendor_str': 'QIDI',
+                                   'min_temp': 190 if typ == 'PLA' else 240,
+                                   'max_temp': 240 if typ == 'PLA' else 270})
+    return b
+
+
+def _qidi_status(app, boxes, loaded):
+    """QIDI-Firmware statt Happy Hare: Box-Zustand aus box_extras/multi_color_controller."""
+    from qbdisplay import model
+    data = copy.deepcopy(BASE_STATUS)
+    data.pop('mmu')
+    if boxes:
+        data['box_extras'] = {'boxes': boxes, 'loaded_slot': loaded}
+    # ohne Box nimmt QIDI box_extras ganz aus der Config (am Plus4 gesehen)
+    data['multi_color_controller'] = {
+        'task': {}, 'box_warning_info': [], 'auto_reload_detect': 0, 'enable_box': 1,
+        'box_count': sum(1 for b in boxes if b.get('is_online')),
+        'operation': {'operate_state': 0, 'active_slot': 'slot16'}, 'extra': EXTERNAL}
+    if not boxes:
+        for k in ('heater_generic unit0_heater', 'temperature_sensor unit0_Env'):
+            data.pop(k, None)
+    app.st = model.Status(data)
+    app._status_changed()
+
+
+def s_filament_no_box(app):
+    _qidi_status(app, [], '')
+    app.go('filament')
+
+
+def s_home_no_box(app):
+    _qidi_status(app, [], '')
+    app.go('home')
+
+
+def s_print_no_box(app):
+    _qidi_status(app, [], '')
+    _printing(app, False)
+    app.st.data.pop('mmu', None)     # _printing setzt Happy-Hare-Werte; hier QIDI ohne Box
+    app.st.update({})
+    app._status_changed()
+    app.go('home')
+
+
+def s_home_cloud_dark(app):
+    """Cloud an, Licht aus, letzter Druck ohne Vorschaubild (so am Plus4 gesehen)."""
+    app.net = dict(app.net, lan_only=False)
+    app._thumbs.clear()
+    app.last_print['metadata'] = {k: v for k, v in app.last_print['metadata'].items()
+                                  if k != 'thumbnails'}
+    app.st.update({'output_pin ' + app.cfg.get('printer', 'light_pin'): {'value': 0}})
+    app._status_changed()
+    app.go('home')
+
+
+def s_filament_rack_selected(app):
+    app.go('filament', sel_slot=-2)
+
+
+def _two_boxes(app):
+    box1 = _qidi_box(3, [('PLA Basic', 'PLA', '#151515'), ('PLA Basic', 'PLA', '#F2F2F2'),
+                         ('PETG Rapido', 'PETG', '#1714B0')])
+    box2 = _qidi_box(4, [('PLA Matte', 'PLA', '#C62828'), ('PLA Matte', 'PLA', '#2E7D32'),
+                         ('PLA Silk', 'PLA', '#D4AF37'), ('ASA', 'ASA', '#9E9E9E')])
+    off = _qidi_box(0, [], online=0)
+    _qidi_status(app, [box1, box2, off, off], 'slot5')
+
+
+def s_filament_two_boxes(app):
+    _two_boxes(app)
+    app.go('filament', box_unit=1)
+
+
+def s_home_two_boxes(app):
+    _two_boxes(app)
+    app.go('home')
+
+
 SCENARIOS = [
     ('01_start_leerlauf', s_home_idle),
     ('02_start_druck_farbwechsel', s_home_print),
@@ -346,4 +436,11 @@ SCENARIOS = [
     ('20_filament_entladen', s_filament_unload),
     ('21_fehler_befehl', s_error_command),
     ('22_system_sprache', s_system_language),
+    ('23_filament_ohne_box', s_filament_no_box),
+    ('24_start_ohne_box', s_home_no_box),
+    ('25_druck_ohne_box', s_print_no_box),
+    ('26_filament_rack_gewaehlt', s_filament_rack_selected),
+    ('27_filament_zwei_boxen', s_filament_two_boxes),
+    ('28_start_zwei_boxen', s_home_two_boxes),
+    ('29_start_cloud_licht_aus', s_home_cloud_dark),
 ]
