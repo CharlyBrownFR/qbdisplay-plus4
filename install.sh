@@ -95,6 +95,24 @@ done
 sudo test -e /root/800_480.tft && fail "Display-Update nach 15 min nicht abgeschlossen (journalctl -u makerbase-client)"
 echo "Display-Datei aufgespielt"
 
+say "Hilfsskript (Version lesen, Wechsel zur QIDI-Oberfläche am Display)"
+sed "s#@BACKUP@#$BACKUP#" "$DIR/systemd/qbdisplay-helper" | sudo tee /usr/local/sbin/qbdisplay-helper >/dev/null
+sudo chown root:root /usr/local/sbin/qbdisplay-helper
+sudo chmod 755 /usr/local/sbin/qbdisplay-helper
+# Regel erst prüfen, dann einsetzen (QIDI verbietet "sudo visudo"; der Syntax-Check geht ohne sudo)
+RULE="$(mktemp)"
+echo "$(id -un) ALL=(root) NOPASSWD: /usr/local/sbin/qbdisplay-helper" > "$RULE"
+/usr/sbin/visudo -cf "$RULE" >/dev/null || { rm -f "$RULE"; fail "sudoers-Regel ungültig – nicht eingerichtet"; }
+sudo install -o root -g root -m 440 "$RULE" /etc/sudoers.d/qbdisplay
+rm -f "$RULE"
+# -k mit Befehl: gespeicherte Anmeldung ignorieren -> prüft wirklich die NOPASSWD-Regel
+if sudo -k -n /usr/local/sbin/qbdisplay-helper version >/dev/null 2>&1; then
+  echo "eingerichtet: /usr/local/sbin/qbdisplay-helper"
+else
+  echo "WARNUNG: Hilfsskript braucht doch ein Passwort – Versionsanzeige und „Zu QIDI“ am Display"
+  echo "         funktionieren dann nicht. Der Rest von qbdisplay läuft normal."
+fi
+
 say "Dienst einrichten"
 sudo systemctl disable --now makerbase-client
 sed -e "s#^User=.*#User=$(id -un)#" \

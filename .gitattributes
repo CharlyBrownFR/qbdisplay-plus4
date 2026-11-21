@@ -7,3 +7,4 @@
 .mmu_config text eol=lf
 *.gcode text eol=lf
 *.conf text eol=lf
+qbdisplay-helper text eol=lf

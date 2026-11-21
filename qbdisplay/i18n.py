@@ -323,8 +323,26 @@ EN = {
     'Firmware neu': 'Restart firmware',
     'Neu zeichnen': 'Redraw',
     'Ausschalten': 'Shut down',
-    'Updates: über die Weboberfläche bzw. git pull im qbdisplay-Verzeichnis':
-        'Updates: via the web UI or git pull in the qbdisplay folder',
+    'Suche nach Updates ...': 'Checking for updates ...',
+    'Update-Prüfung fehlgeschlagen': 'Update check failed',
+    'QIDI-Update: %s': 'QIDI update: %s',
+    'QIDI aktuell (%s)': 'QIDI current (%s)',
+    'QIDI-Server offline': 'QIDI server offline',
+    'qbdisplay %s verfügbar (GitHub)': 'qbdisplay %s available (GitHub)',
+    'qbdisplay aktuell': 'qbdisplay up to date',
+    'Suchen': 'Check',
+    'Zu QIDI': 'To QIDI',
+    'Zur QIDI-Oberfläche wechseln?': 'Switch to the QIDI UI?',
+    'qbdisplay wird beendet und die QIDI-Oberfläche aufgespielt (ca. 7 min, Display solange '
+    'dunkel). Danach sind QIDI-Updates und die QIDI-App wieder verfügbar. qbdisplay später per '
+    './install.sh zurückholen.':
+        'qbdisplay stops and the QIDI UI is flashed (about 7 min, screen stays dark). QIDI '
+        'updates and the QIDI app are then available again. Bring qbdisplay back later with '
+        './install.sh.',
+    'Wechseln': 'Switch',
+    'Wechsel zur QIDI-Oberfläche läuft (ca. 7 min)': 'Switching to the QIDI UI (about 7 min)',
+    'Wechsel nicht möglich - install.sh erneut ausführen':
+        'Switch not possible - run install.sh again',
 
     # --- Dialoge ------------------------------------------------------------------
     'Bitte bestätigen': 'Please confirm',

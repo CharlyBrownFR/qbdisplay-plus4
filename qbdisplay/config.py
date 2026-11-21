@@ -87,6 +87,10 @@ DEFAULTS = {
         'lan_only_on_cmd': '',
         'lan_only_off_cmd': '',
     },
+    'update': {
+        # GitHub-Repository, in dem nach neuen qbdisplay-Versionen gesucht wird (leer = aus)
+        'repo': 'CharlyBrownFR/qbdisplay-plus4',
+    },
     'state': {
         'file': '~/printer_data/qbdisplay_state.json',
     },

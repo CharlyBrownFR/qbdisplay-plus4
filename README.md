@@ -47,8 +47,9 @@ Spielt die gesicherte QIDI-Display-Datei wieder auf (ca. 7 min) und startet QIDI
 
 ## Gut zu wissen
 
-- **Updates von QIDI:** Online-/USB-Updates laufen über QIDIs Display-Programm. Vorher
-  `./uninstall.sh`, dann updaten, danach wieder `./install.sh`.
+- **Updates:** Unter System → Info & Update sucht „Suchen“ nach neuen Versionen der QIDI-Firmware
+  und von qbdisplay. QIDI-Updates selbst laufen über QIDIs Oberfläche: „Zu QIDI“ wechselt direkt am
+  Display zurück (ca. 7 min), dann wie gewohnt updaten, danach wieder `./install.sh`.
 - **QIDI-Cloud/App:** entfallen mit qbdisplay (QIDI Studio im LAN funktioniert weiter).
 - **Nach Stromausfall** fragt qbdisplay (noch) nicht nach dem Fortsetzen des Drucks.
 - Inoffizielles Projekt, nicht von QIDI. Nutzung auf eigene Gefahr.
@@ -107,7 +108,9 @@ cd ~/qbdisplay && ./uninstall.sh
 
 ## Good to know
 
-- **QIDI updates** run through QIDI's display program: `./uninstall.sh`, update, `./install.sh`.
+- **Updates:** System → Info & Update → "Check" looks for new QIDI firmware and qbdisplay versions.
+  QIDI updates run through QIDI's UI: "To QIDI" switches back right on the display (about 7 min),
+  update as usual, then run `./install.sh` again.
 - **QIDI cloud/app** are not available with qbdisplay (QIDI Studio on the LAN keeps working).
 - **After a power loss** qbdisplay does not (yet) offer to resume the print.
 - Unofficial project, not affiliated with QIDI. Use at your own risk.

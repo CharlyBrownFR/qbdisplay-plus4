@@ -1,0 +1,51 @@
+#!/bin/bash
+# qbdisplay-helper – die einzigen Aktionen, die qbdisplay mit Root-Rechten ausführen darf
+#
+# Copyright (C) 2026  STRE – GNU GPLv3
+#
+# install.sh legt diese Datei root-eigen nach /usr/local/sbin und erlaubt dem
+# qbdisplay-Benutzer per /etc/sudoers.d/qbdisplay genau diesen Befehl ohne Passwort.
+#   version   QIDI-Firmwareversion ausgeben (/root/xindi/version ist nur für root lesbar)
+#   to-qidi   zur QIDI-Oberfläche zurückwechseln (läuft im Hintergrund, ca. 7 min)
+set -u
+
+BACKUP="@BACKUP@/800_480-qidi.tft"
+
+wake_display() {
+  python3 - <<'PY' || true
+import os, termios, time
+fd = os.open('/dev/ttyS1', os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+a = termios.tcgetattr(fd)
+a[0] = a[1] = a[3] = 0
+a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
+a[4] = a[5] = termios.B115200
+termios.tcsetattr(fd, termios.TCSANOW, a)
+for cmd in (b'sleep=0', b'thsp=0'):
+    os.write(fd, cmd + b'\xff\xff\xff')
+    time.sleep(0.3)
+os.close(fd)
+PY
+}
+
+case "${1:-}" in
+  version)
+    cat /root/xindi/version
+    ;;
+  to-qidi)
+    [ -f "$BACKUP" ] || { echo "QIDI-Display-Datei fehlt: $BACKUP" >&2; exit 1; }
+    # eigene Unit, damit der Wechsel weiterläuft, wenn qbdisplay gleich beendet wird
+    systemd-run --unit=qbdisplay-to-qidi --collect "$0" to-qidi-run
+    ;;
+  to-qidi-run)
+    systemctl disable --now qbdisplay
+    wake_display
+    cp "$BACKUP" /root/800_480.tft
+    sync
+    systemctl enable makerbase-client
+    systemctl restart makerbase-client
+    ;;
+  *)
+    echo "Aufruf: $0 version|to-qidi" >&2
+    exit 2
+    ;;
+esac

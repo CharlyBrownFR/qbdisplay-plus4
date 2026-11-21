@@ -250,6 +250,10 @@ def s_system_box(app):
 
 
 def s_system_info(app):
+    # feste Werte statt echter Netzabfrage
+    app.update_info = {'state': 'done', 'qidi_local': (2, 1, 1), 'qidi_remote': (2, 1, 1),
+                       'qidi_source': 'GitHub', 'qidi_newer': False, 'self_local': (0, 2, 0),
+                       'self_remote': (0, 2, 0), 'self_newer': False, 'helper': True}
     app.go('system', sys_sub='info')
 
 

@@ -27,8 +27,9 @@ sys.path.insert(0, ROOT)
 
 from qbdisplay import __version__  # noqa: E402
 
-FILES = ['install.sh', 'uninstall.sh', 'qbdisplay.example.cfg', 'LICENSE', 'systemd/qbdisplay.service']
-EXEC = {'install.sh', 'uninstall.sh'}
+FILES = ['install.sh', 'uninstall.sh', 'qbdisplay.example.cfg', 'LICENSE', 'systemd/qbdisplay.service',
+         'systemd/qbdisplay-helper']
+EXEC = {'install.sh', 'uninstall.sh', 'systemd/qbdisplay-helper'}
 
 
 def add_bytes(tar, name, data, mode=0o644):
@@ -54,7 +55,7 @@ def main():
                 print('fehlt (übersprungen):', rel)
                 continue
             data = open(src, 'rb').read()
-            if rel.endswith(('.sh', '.cfg', '.service')):
+            if rel.endswith(('.sh', '.cfg', '.service', '-helper')):
                 data = data.replace(b'\r\n', b'\n')
             add_bytes(tar, '%s/%s' % (base, rel), data, 0o755 if rel in EXEC else 0o644)
         for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, 'qbdisplay')):

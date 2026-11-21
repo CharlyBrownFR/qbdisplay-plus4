@@ -46,6 +46,7 @@ sudo -v || fail "sudo-Rechte nötig"
 say "qbdisplay abschalten"
 sudo systemctl disable --now qbdisplay 2>/dev/null || true
 sudo rm -f /etc/systemd/system/qbdisplay.service
+sudo rm -f /etc/sudoers.d/qbdisplay /usr/local/sbin/qbdisplay-helper
 sudo systemctl daemon-reload
 
 say "QIDI-Display-Datei aufspielen (ca. 7 min, Display bleibt solange dunkel)"

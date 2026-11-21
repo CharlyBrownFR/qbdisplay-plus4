@@ -26,6 +26,7 @@ from . import i18n
 from . import model
 from . import netinfo
 from . import qidi
+from . import updates
 from . import thumbs
 from .canvas import Canvas
 from .i18n import _
@@ -101,6 +102,7 @@ class App(object):
         self.connected = rpc is None
         self.server_info = {}
         self.versions = {}
+        self.update_info = {}
         self.page_name = 'home'
         self.pages = {}
         self.dialog = None
@@ -816,6 +818,41 @@ class App(object):
                 self.mark_dirty()
         self.rpc.call('printer.info', None, pinfo)
 
+    # --- Updates ----------------------------------------------------------------
+    def check_updates(self):
+        """Versionen prüfen (im Hintergrund, nur lesende Abfragen)."""
+        if self.update_info.get('state') == 'checking':
+            return
+        self.update_info = {'state': 'checking'}
+        self.mark_dirty()
+        repo = self.cfg.get('update', 'repo').strip()
+
+        def run():
+            try:
+                res = updates.check(repo, __version__)
+                res['state'] = 'done'
+            except Exception as e:   # noqa: nur Anzeige
+                log.exception('Update-Prüfung')
+                res = {'state': 'error', 'error': str(e)}
+            self.events.put(('updates', res))
+        t = threading.Thread(target=run, name='updates')
+        t.daemon = True
+        t.start()
+
+    def confirm_switch_qidi(self):
+        def go_qidi():
+            ok, out = updates.switch_to_qidi()
+            if ok:
+                self.notify(_('Wechsel zur QIDI-Oberfläche läuft (ca. 7 min)'), 'ok', 10.0)
+            else:
+                log.warning('Wechsel zu QIDI: %s', out)
+                self.notify(_('Wechsel nicht möglich - install.sh erneut ausführen'), 'err', 8.0)
+        self.confirm(_('Zur QIDI-Oberfläche wechseln?'),
+                     _('qbdisplay wird beendet und die QIDI-Oberfläche aufgespielt (ca. 7 min, '
+                       'Display solange dunkel). Danach sind QIDI-Updates und die QIDI-App '
+                       'wieder verfügbar. qbdisplay später per ./install.sh zurückholen.'),
+                     _('Wechseln'), go_qidi, danger=False, ok_icon='retry')
+
     def refresh_net(self):
         comps = self.server_info.get('components') or []
         try:
@@ -866,6 +903,9 @@ class App(object):
             state = self.server_info.get('klippy_state')
             if state and state != 'ready':
                 self.st.update({'webhooks': {'state': state}})
+            self.mark_dirty()
+        elif kind == 'updates':
+            self.update_info = data or {}
             self.mark_dirty()
         elif kind == 'klippy_state':
             self.st.update({'webhooks': {'state': data or 'startup'}})

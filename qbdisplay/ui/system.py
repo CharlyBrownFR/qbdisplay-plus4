@@ -11,6 +11,7 @@
 from .. import __version__
 from .. import fonts as F
 from .. import i18n
+from .. import updates
 from ..i18n import _, N_
 from ..canvas import Rect
 from . import widgets as W
@@ -204,9 +205,13 @@ class SystemPage(Page):
     def build_info(self, frame):
         ctx = self.ctx
         vers = ctx.versions
-        lines = [('qbdisplay', __version__), ('Klipper', vers.get('klipper', '–')),
-                 ('Moonraker', vers.get('moonraker', '–')),
-                 ('Display', vers.get('display', '–'))]
+        upd = ctx.update_info
+        if not upd:
+            ctx.check_updates()      # einmal je Programmstart automatisch
+        qidi = updates.fmt(upd.get('qidi_local')) if upd.get('qidi_local') else '–'
+        lines = [('qbdisplay', __version__), ('QIDI-Firmware', qidi),
+                 ('Klipper', vers.get('klipper', '–')),
+                 ('Moonraker', vers.get('moonraker', '–'))]
         rect = Rect(AREA.x, 52, AREA.w, 156)
 
         def paint(c, r):
@@ -238,8 +243,52 @@ class SystemPage(Page):
             if not dis:
                 frame.target(tid, rr, act)
 
-        def paint_note(c, r):
-            c.icon('info', r.x, r.y - 1, 20, 'text3', 'bg')
-            c.text(r.x + 28, r.y, r.w - 28, 18, _('Updates: über die Weboberfläche bzw. git pull '
-                                                  'im qbdisplay-Verzeichnis'), F.CAP, 'text3', 'bg')
-        frame.region('note', Rect(AREA.x, 446, AREA.w, 20), 0, paint_note)
+        self._update_tile(frame, busy)
+
+    def _update_tile(self, frame, busy):
+        """Update-Stand: QIDI-Firmware und qbdisplay, Knöpfe Suchen / Zu QIDI wechseln."""
+        ctx = self.ctx
+        upd = ctx.update_info
+        state = upd.get('state')
+        if state == 'checking' or not state:
+            l1, l2, tone = _('Suche nach Updates ...'), '', 'text2'
+        elif state == 'error':
+            l1, l2, tone = _('Update-Prüfung fehlgeschlagen'), upd.get('error', '')[:60], 'warn'
+        else:
+            if upd.get('qidi_newer'):
+                l1 = _('QIDI-Update: %s') % updates.fmt(upd.get('qidi_remote'))
+                tone = 'warn'
+            elif upd.get('qidi_remote'):
+                l1 = _('QIDI aktuell (%s)') % updates.fmt(upd.get('qidi_remote'))
+                tone = 'ok'
+            else:
+                l1, tone = _('QIDI-Server offline'), 'text2'
+            if upd.get('self_newer'):
+                l2 = _('qbdisplay %s verfügbar (GitHub)') % updates.fmt(upd.get('self_remote'))
+            elif upd.get('self_remote'):
+                l2 = _('qbdisplay aktuell')
+            else:
+                l2 = ''
+        rect = Rect(AREA.x, 366, AREA.w, 72)
+        bw = 128
+        r_search = Rect(rect.x + rect.w - 2 * bw - 20, rect.y + 12, bw, 48)
+        r_qidi = Rect(rect.x + rect.w - bw - 12, rect.y + 12, bw, 48)
+
+        def paint(c, r):
+            W.tile(c, r)
+            tw = r_search.x - r.x - 28
+            c.text(r.x + 16, r.y + 14, tw, 20, l1, F.LBL, tone, 'surface')
+            if l2:
+                c.text(r.x + 16, r.y + 40, tw, 18, l2, F.CAP, 'text3', 'surface')
+        frame.region('upd', rect, (l1, l2, tone), paint)
+        for tid, label, act, rr in (('u.search', _('Suchen'), ctx.check_updates, r_search),
+                                    ('u.qidi', _('Zu QIDI'), ctx.confirm_switch_qidi, r_qidi)):
+            dis = (busy and tid == 'u.qidi') or state == 'checking'
+            pr = ctx.pressed == tid
+            kind = 'disabled' if dis else 'secondary'
+
+            def paint_b(c, r, label=label, kind=kind, pr=pr):
+                W.button(c, r, label, kind, None, 'surface', pressed=pr)
+            frame.region('b.' + tid, rr, (label, kind, pr), paint_b)
+            if not dis:
+                frame.target(tid, rr, act)
