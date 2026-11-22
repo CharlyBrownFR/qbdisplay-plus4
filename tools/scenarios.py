@@ -257,6 +257,41 @@ def s_system_info(app):
     app.go('system', sys_sub='info')
 
 
+def _update_available(app):
+    s_system_info(app)
+    app.update_info = dict(app.update_info, self_local=(0, 4, 0), self_remote=(0, 4, 1),
+                           self_newer=True)
+
+
+def s_system_update_available(app):
+    _update_available(app)
+    app.go('system', sys_sub='info')
+
+
+def s_system_update_test(app):
+    """Testdrucker mit prerelease: yes – Vorabversion wird angeboten."""
+    _update_available(app)
+    app.update_info['self_prerelease'] = True
+    app.go('system', sys_sub='info')
+
+
+def s_system_update_confirm(app):
+    _update_available(app)
+    app.go('system', sys_sub='info')
+    app.confirm_install_update()
+
+
+def s_system_update_failed(app):
+    """Nach dem Neustart: Update ist schiefgegangen, alte Version läuft weiter."""
+    from unittest import mock
+    from qbdisplay import updates
+    s_system_info(app)
+    st = {'state': 'failed', 'from': '0.4.0', 'to': '0.4.1',
+          'message': 'qbdisplay 0.4.1 startet nicht'}
+    with mock.patch.object(updates, 'read_status', lambda: st),             mock.patch.object(updates, 'clear_status', lambda: None):
+        app.show_update_result()
+
+
 def s_drying_select(app):
     app.go('drying')
 
@@ -443,4 +478,8 @@ SCENARIOS = [
     ('27_filament_zwei_boxen', s_filament_two_boxes),
     ('28_start_zwei_boxen', s_home_two_boxes),
     ('29_start_cloud_licht_aus', s_home_cloud_dark),
+    ('30_system_update_verfuegbar', s_system_update_available),
+    ('31_system_update_bestaetigen', s_system_update_confirm),
+    ('32_system_update_fehlgeschlagen', s_system_update_failed),
+    ('33_system_update_testversion', s_system_update_test),
 ]

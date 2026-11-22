@@ -104,6 +104,7 @@ class App(object):
         self.server_info = {}
         self.versions = {}
         self.update_info = {}
+        self._update_result_shown = False
         self.page_name = 'home'
         self.pages = {}
         self.dialog = None
@@ -861,7 +862,8 @@ class App(object):
 
         def run():
             try:
-                res = updates.check(repo, __version__)
+                res = updates.check(repo, __version__,
+                                    self.cfg.getbool('update', 'prerelease'))
                 res['state'] = 'done'
             except Exception as e:   # noqa: nur Anzeige
                 log.exception('Update-Prüfung')
@@ -870,6 +872,62 @@ class App(object):
         t = threading.Thread(target=run, name='updates')
         t.daemon = True
         t.start()
+
+    def confirm_install_update(self):
+        """qbdisplay-Update von GitHub installieren (nur im Leerlauf, nach Rückfrage)."""
+        ver = updates.fmt(self.update_info.get('self_remote'))
+
+        def go():
+            if self.pstate in ('printing', 'paused', 'paused_error'):
+                self.notify(_('Während eines Drucks nicht möglich'), 'warn', 6.0)
+                return
+            self.update_info = dict(self.update_info, state='installing')
+            self.mark_dirty()
+            repo = self.cfg.get('update', 'repo').strip()
+
+            def run():
+                try:
+                    res = updates.install_release(
+                        repo, prerelease=self.cfg.getbool('update', 'prerelease'))
+                except Exception as e:   # noqa: nur Anzeige
+                    log.exception('Update installieren')
+                    res = ('error', str(e))
+                self.events.put(('update_install', res))
+            t = threading.Thread(target=run, name='update-install')
+            t.daemon = True
+            t.start()
+        self.confirm(_('qbdisplay %s installieren?') % ver,
+                     _('Wird von GitHub geladen und geprüft, dann startet qbdisplay neu (neue '
+                       'Display-Datei: ca. 2 min dunkel). Bei Problemen automatisch zurück.'),
+                     _('Installieren'), go, danger=False, ok_icon='down')
+
+    def _update_installed(self, res):
+        state, info = res
+        self.update_info = dict(self.update_info, state='done')
+        if state == 'started':
+            self.update_info['state'] = 'restarting'
+            self.notify(_('Update auf %s läuft - qbdisplay startet gleich neu') %
+                        updates.fmt(info), 'ok', 30.0)
+        elif state == 'manual':
+            self.info(_('Update von Hand nötig'),
+                      _('Diese Version ändert Teile mit Root-Rechten. Bitte das Paket wie bei '
+                        'der Erstinstallation mit ./install.sh einspielen (siehe README).'))
+        else:
+            self.notify(_('Update fehlgeschlagen: %s') % str(info)[:60], 'err', 10.0)
+        self.mark_dirty()
+
+    def show_update_result(self):
+        """Nach dem Neustart einmal melden, wie das letzte Update ausgegangen ist."""
+        st = updates.read_status()
+        if st.get('state') == 'done':
+            self.notify(_('qbdisplay %s installiert') % st.get('to', ''), 'ok', 8.0)
+        elif st.get('state') == 'failed':
+            self.info(_('Update fehlgeschlagen'),
+                      _('qbdisplay läuft weiter mit Version %s. Grund: %s') % (
+                          st.get('from', '?'), st.get('message', '')))
+        else:
+            return
+        updates.clear_status()
 
     def confirm_switch_qidi(self):
         def go_qidi():
@@ -925,6 +983,9 @@ class App(object):
                 log.exception('Rückruf fehlgeschlagen')
         elif kind == 'connected':
             self.connected = True
+            if not self._update_result_shown:
+                self._update_result_shown = True
+                self.show_update_result()
             self.mark_dirty()
         elif kind == 'disconnected':
             self.connected = False
@@ -939,6 +1000,8 @@ class App(object):
         elif kind == 'updates':
             self.update_info = data or {}
             self.mark_dirty()
+        elif kind == 'update_install':
+            self._update_installed(data)
         elif kind == 'klippy_state':
             self.st.update({'webhooks': {'state': data or 'startup'}})
             self._status_changed()

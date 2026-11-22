@@ -153,4 +153,5 @@ MANIFEST = [
     ('cloudoff', 18, 'warn', 'bar'),  # 141
     ('layers', 30, 'text3', 'surface2'),  # 142
     ('light', 24, 'text3', 'surface'),  # 143
+    ('info', 24, 'accent', 'surface'),  # 144
 ]

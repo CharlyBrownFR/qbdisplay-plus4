@@ -94,9 +94,11 @@ for i in $(seq 1 90); do
 done
 sudo test -e /root/800_480.tft && fail "Display-Update nach 15 min nicht abgeschlossen (journalctl -u makerbase-client)"
 echo "Display-Datei aufgespielt"
+# merken, welche Datei auf dem Display ist (Update am Display spielt sie nur bei Änderung neu auf)
+sha256sum "$TFT" | cut -d' ' -f1 > "$BACKUP/installed-tft.sha256"
 
 say "Hilfsskript (Version lesen, Wechsel zur QIDI-Oberfläche am Display)"
-sed "s#@BACKUP@#$BACKUP#" "$DIR/systemd/qbdisplay-helper" | sudo tee /usr/local/sbin/qbdisplay-helper >/dev/null
+sed "s#@BACKUP@#$BACKUP#; s#@APPDIR@#$DIR#; s#@USER@#$(id -un)#" "$DIR/systemd/qbdisplay-helper"   | sudo tee /usr/local/sbin/qbdisplay-helper >/dev/null
 sudo chown root:root /usr/local/sbin/qbdisplay-helper
 sudo chmod 755 /usr/local/sbin/qbdisplay-helper
 # Regel erst prüfen, dann einsetzen (QIDI verbietet "sudo visudo"; der Syntax-Check geht ohne sudo)

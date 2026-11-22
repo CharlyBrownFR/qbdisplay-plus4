@@ -5,11 +5,22 @@
 #
 # install.sh legt diese Datei root-eigen nach /usr/local/sbin und erlaubt dem
 # qbdisplay-Benutzer per /etc/sudoers.d/qbdisplay genau diesen Befehl ohne Passwort.
-#   version   QIDI-Firmwareversion ausgeben (/root/xindi/version ist nur für root lesbar)
-#   to-qidi   zur QIDI-Oberfläche zurückwechseln (läuft im Hintergrund, ca. 7 min)
+#   version        QIDI-Firmwareversion ausgeben (/root/xindi/version ist nur für root lesbar)
+#   to-qidi        zur QIDI-Oberfläche zurückwechseln (läuft im Hintergrund, ca. 7 min)
+#   update <dir>   geprüftes, entpacktes Release aus ~/qbdisplay-updates installieren
+#                  (läuft im Hintergrund; Ergebnis in qbdisplay-backup/update-status)
 set -u
 
-BACKUP="@BACKUP@/800_480-qidi.tft"
+BACKUP="@BACKUP@"
+APPDIR="@APPDIR@"
+APPUSER="@USER@"
+QIDI_TFT="$BACKUP/800_480-qidi.tft"
+UPDATES="$(dirname "$APPDIR")/qbdisplay-updates"
+STATUS="$BACKUP/update-status"
+TFT_SUM="$BACKUP/installed-tft.sha256"
+TFT_TARGET="/root/800_480.tft"
+API="http://127.0.0.1:7125"
+SELF="/usr/local/sbin/qbdisplay-helper"
 
 wake_display() {
   python3 - <<'PY' || true
@@ -27,25 +38,144 @@ os.close(fd)
 PY
 }
 
+# Display-Datei über QIDIs eigenen Mechanismus aufspielen (makerbase-client flasht
+# /root/800_480.tft beim Start und löscht sie danach). qbdisplay muss gestoppt sein.
+flash_tft() {
+  wake_display
+  cp "$1" "$TFT_TARGET" || return 1
+  sync
+  systemctl restart makerbase-client
+  for _ in $(seq 1 90); do
+    [ -e "$TFT_TARGET" ] || break
+    sleep 10
+  done
+  systemctl stop makerbase-client
+  [ ! -e "$TFT_TARGET" ]
+}
+
+status() {   # status <zustand> <text>
+  printf 'state=%s\nfrom=%s\nto=%s\ntime=%s\nmessage=%s\n' "$1" "${FROM:-}" "${TO:-}" \
+    "$(date +%s)" "$2" > "$STATUS.tmp"
+  chown "$APPUSER": "$STATUS.tmp"
+  mv "$STATUS.tmp" "$STATUS"
+}
+
+pkg_version() {
+  sed -n 's/^__version__ *= *["'\'']\([^"'\'']*\)["'\''].*/\1/p' "$1/qbdisplay/__init__.py" 2>/dev/null
+}
+
+printer_busy() {
+  curl -s "$API/printer/objects/query?print_stats=state" | grep -q '"printing"\|"paused"'
+}
+
+# Paket prüfen (läuft vor dem Start im Vordergrund, damit qbdisplay Fehler sofort sieht)
+check_update() {
+  local new="$1" real
+  real="$(readlink -f "$new")" || { echo "Ordner fehlt"; return 1; }
+  case "$real" in
+    "$UPDATES"/qbdisplay-plus4-*) ;;
+    *) echo "Ordner nicht unter $UPDATES"; return 1 ;;
+  esac
+  [ "$(stat -c %U "$real")" = "$APPUSER" ] || { echo "Ordner gehört nicht $APPUSER"; return 1; }
+  for f in install.sh qbdisplay.tft qbdisplay/__init__.py systemd/qbdisplay-helper \
+           systemd/qbdisplay.service; do
+    [ -f "$real/$f" ] || { echo "$f fehlt im Paket"; return 1; }
+  done
+  [ -n "$(pkg_version "$real")" ] || { echo "Version im Paket fehlt"; return 1; }
+  # Hilfsskript und Dienst werden nie automatisch ersetzt (sonst root ohne Passwort)
+  local a='@'   # Platzhalter zusammensetzen, sonst ersetzt install.sh sie hier mit
+  if ! sed "s#${a}BACKUP${a}#$BACKUP#; s#${a}APPDIR${a}#$APPDIR#; s#${a}USER${a}#$APPUSER#" \
+        "$real/systemd/qbdisplay-helper" | cmp -s - "$SELF"; then
+    echo "manual: neues Hilfsskript - bitte ./install.sh von Hand ausführen"; return 3
+  fi
+  if ! cmp -s "$real/systemd/qbdisplay.service" "$APPDIR/systemd/qbdisplay.service"; then
+    echo "manual: geänderter Dienst - bitte ./install.sh von Hand ausführen"; return 3
+  fi
+  printer_busy && { echo "Es läuft ein Druck"; return 1; }
+  return 0
+}
+
+run_update() {
+  local new old tft_flashed=0 sum
+  new="$(readlink -f "$1")"
+  FROM="$(pkg_version "$APPDIR")"
+  TO="$(pkg_version "$new")"
+  old="$APPDIR-alt-$FROM"
+  status running "Installation läuft"
+
+  systemctl stop qbdisplay
+  rm -rf "$old"
+  mv "$APPDIR" "$old" || { systemctl start qbdisplay; status failed "Ordner nicht tauschbar"; return 1; }
+  mv "$new" "$APPDIR" || { mv "$old" "$APPDIR"; systemctl start qbdisplay
+                           status failed "Ordner nicht tauschbar"; return 1; }
+  chown -R "$APPUSER": "$APPDIR"
+  sudo -u "$APPUSER" python3 -m compileall -q "$APPDIR/qbdisplay" >/dev/null 2>&1
+
+  sum="$(sha256sum "$APPDIR/qbdisplay.tft" | cut -d' ' -f1)"
+  if [ "$sum" != "$(cat "$TFT_SUM" 2>/dev/null)" ]; then
+    status running "Display-Datei wird aufgespielt (ca. 2 min)"
+    if flash_tft "$APPDIR/qbdisplay.tft"; then
+      echo "$sum" > "$TFT_SUM"
+      tft_flashed=1
+    else
+      rollback "$old" 0 "Display-Datei ließ sich nicht aufspielen"
+      return 1
+    fi
+  fi
+
+  systemctl start qbdisplay
+  sleep 15
+  if systemctl is-active --quiet qbdisplay; then
+    status done "qbdisplay $TO installiert"
+    return 0
+  fi
+  rollback "$old" "$tft_flashed" "qbdisplay $TO startet nicht"
+  return 1
+}
+
+rollback() {   # rollback <alter ordner> <tft neu aufgespielt?> <grund>
+  local old="$1" flashed="$2" why="$3"
+  systemctl stop qbdisplay
+  rm -rf "$APPDIR.failed"
+  mv "$APPDIR" "$APPDIR.failed"
+  mv "$old" "$APPDIR"
+  if [ "$flashed" = 1 ] && flash_tft "$APPDIR/qbdisplay.tft"; then
+    sha256sum "$APPDIR/qbdisplay.tft" | cut -d' ' -f1 > "$TFT_SUM"
+  fi
+  systemctl start qbdisplay
+  status failed "$why"
+}
+
 case "${1:-}" in
   version)
     cat /root/xindi/version
     ;;
   to-qidi)
-    [ -f "$BACKUP" ] || { echo "QIDI-Display-Datei fehlt: $BACKUP" >&2; exit 1; }
+    [ -f "$QIDI_TFT" ] || { echo "QIDI-Display-Datei fehlt: $QIDI_TFT" >&2; exit 1; }
     # eigene Unit, damit der Wechsel weiterläuft, wenn qbdisplay gleich beendet wird
     systemd-run --unit=qbdisplay-to-qidi --collect "$0" to-qidi-run
     ;;
   to-qidi-run)
     systemctl disable --now qbdisplay
     wake_display
-    cp "$BACKUP" /root/800_480.tft
+    cp "$QIDI_TFT" "$TFT_TARGET"
     sync
     systemctl enable makerbase-client
     systemctl restart makerbase-client
     ;;
+  update)
+    out="$(check_update "${2:-}")"; rc=$?
+    echo "$out"
+    [ $rc -eq 0 ] || exit $rc
+    # eigene Unit: läuft weiter, wenn qbdisplay gleich beendet wird
+    systemd-run --unit=qbdisplay-update --collect "$0" update-run "$2"
+    ;;
+  update-run)
+    out="$(check_update "${2:-}")" || { FROM="$(pkg_version "$APPDIR")"; status failed "$out"; exit 1; }
+    run_update "$2"
+    ;;
   *)
-    echo "Aufruf: $0 version|to-qidi" >&2
+    echo "Aufruf: $0 version|to-qidi|update <ordner>" >&2
     exit 2
     ;;
 esac

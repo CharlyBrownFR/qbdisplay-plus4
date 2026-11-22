@@ -260,7 +260,11 @@ class SystemPage(Page):
         ctx = self.ctx
         upd = ctx.update_info
         state = upd.get('state')
-        if state == 'checking' or not state:
+        if state == 'installing':
+            l1, l2, tone = _('Update wird geladen und geprüft ...'), '', 'text2'
+        elif state == 'restarting':
+            l1, l2, tone = _('Update läuft, qbdisplay startet neu ...'), '', 'ok'
+        elif state == 'checking' or not state:
             l1, l2, tone = _('Suche nach Updates ...'), '', 'text2'
         elif state == 'error':
             l1, l2, tone = _('Update-Prüfung fehlgeschlagen'), upd.get('error', '')[:60], 'warn'
@@ -274,7 +278,8 @@ class SystemPage(Page):
             else:
                 l1, tone = _('QIDI-Server offline'), 'text2'
             if upd.get('self_newer'):
-                l2 = _('qbdisplay %s verfügbar (GitHub)') % updates.fmt(upd.get('self_remote'))
+                l2 = (_('Testversion %s verfügbar') if upd.get('self_prerelease')
+                      else _('qbdisplay %s verfügbar')) % updates.fmt(upd.get('self_remote'))
             elif upd.get('self_remote'):
                 l2 = _('qbdisplay aktuell')
             else:
@@ -291,11 +296,16 @@ class SystemPage(Page):
             if l2:
                 c.text(r.x + 16, r.y + 40, tw, 18, l2, F.CAP, 'text3', 'surface')
         frame.region('upd', rect, (l1, l2, tone), paint)
-        for tid, label, act, rr in (('u.search', _('Suchen'), ctx.check_updates, r_search),
+        # neue qbdisplay-Version: "Suchen" wird zu "Installieren"
+        can_install = state == 'done' and upd.get('self_newer')
+        first = (('u.install', _('Installieren'), ctx.confirm_install_update) if can_install
+                 else ('u.search', _('Suchen'), ctx.check_updates))
+        for tid, label, act, rr in (first + (r_search,),
                                     ('u.qidi', _('Zu QIDI'), ctx.confirm_switch_qidi, r_qidi)):
-            dis = (busy and tid == 'u.qidi') or state == 'checking'
+            dis = ((busy and tid in ('u.qidi', 'u.install'))
+                   or state in ('checking', 'installing', 'restarting'))
             pr = ctx.pressed == tid
-            kind = 'disabled' if dis else 'secondary'
+            kind = 'disabled' if dis else ('primary' if tid == 'u.install' else 'secondary')
 
             def paint_b(c, r, label=label, kind=kind, pr=pr):
                 W.button(c, r, label, kind, None, 'surface', pressed=pr)

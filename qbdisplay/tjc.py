@@ -274,6 +274,7 @@ class TjcDisplay(object):
         self._queue = collections.deque()
         self._cond = threading.Condition()
         self._outstanding = 0
+        self._inflight = False
         self._last_send = 0.0
         self._ack_mode = True
         self._missed_acks = 0
@@ -355,7 +356,8 @@ class TjcDisplay(object):
     def flush(self, timeout=5.0):
         end = time.time() + timeout
         with self._cond:
-            while (self._queue or self._outstanding) and time.time() < end:
+            while ((self._queue or self._outstanding or self._inflight)
+                   and time.time() < end):
                 self._cond.wait(0.05)
 
     def _writer(self):
@@ -379,6 +381,8 @@ class TjcDisplay(object):
                             break
                         self._cond.wait(rest)
                 data = self._queue.popleft()
+                # bis zum Schreiben zählt der Befehl noch als offen (flush wartet darauf)
+                self._inflight = True
                 if self._ack_mode:
                     self._outstanding += 1
             if not self._ack_mode:
@@ -394,6 +398,9 @@ class TjcDisplay(object):
                 log.exception('Schreiben auf %s fehlgeschlagen', self.port_name)
                 time.sleep(0.5)
             self._last_send = time.time()
+            with self._cond:
+                self._inflight = False
+                self._cond.notify_all()
 
     # -- Empfangen ---------------------------------------------------------
     def _reader(self):

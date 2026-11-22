@@ -90,6 +90,8 @@ DEFAULTS = {
     'update': {
         # GitHub-Repository, in dem nach neuen qbdisplay-Versionen gesucht wird (leer = aus)
         'repo': 'CharlyBrownFR/qbdisplay-plus4',
+        # auch Vorabversionen (Testversionen) anbieten – nur für Testdrucker
+        'prerelease': 'no',
     },
     'state': {
         'file': '~/printer_data/qbdisplay_state.json',
