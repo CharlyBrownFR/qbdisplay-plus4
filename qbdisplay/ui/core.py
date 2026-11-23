@@ -20,9 +20,10 @@ from ..canvas import Rect
 
 
 class Region(object):
-    __slots__ = ('rid', 'rect', 'key', 'paint', 'clear', 'parent', 'opaque')
+    __slots__ = ('rid', 'rect', 'key', 'paint', 'clear', 'parent', 'opaque', 'gaps')
 
-    def __init__(self, rid, rect, key, paint, clear='bg', parent=None, opaque=False):
+    def __init__(self, rid, rect, key, paint, clear='bg', parent=None, opaque=False,
+                 gaps=False):
         self.rid = rid
         self.rect = rect
         self.key = key
@@ -30,6 +31,7 @@ class Region(object):
         self.clear = clear
         self.parent = parent
         self.opaque = opaque
+        self.gaps = gaps
 
 
 class Target(object):
@@ -50,11 +52,14 @@ class Frame(object):
         self.targets = []
         self._ids = set()
 
-    def region(self, rid, rect, key, paint, clear='bg', parent=None, opaque=False):
+    def region(self, rid, rect, key, paint, clear='bg', parent=None, opaque=False, gaps=False):
+        """``gaps``: nicht vorher löschen, sondern zeichnen und danach nur die
+        unbedeckten Stellen mit ``clear`` füllen. Für wechselnde Werte (Text,
+        Icons, Flächen): die Anzeige springt direkt um, ohne leeres Zwischenbild."""
         if rid in self._ids:
             raise ValueError('Region doppelt: %s' % rid)
         self._ids.add(rid)
-        self.regions.append(Region(rid, rect, key, paint, clear, parent, opaque))
+        self.regions.append(Region(rid, rect, key, paint, clear, parent, opaque, gaps))
 
     def target(self, tid, rect, action, enabled=True):
         self.targets.append(Target(tid, rect, action, enabled))
@@ -139,6 +144,19 @@ class Renderer(object):
         return count
 
     def _paint(self, r):
+        c = self.canvas
+        if r.gaps:
+            # 1) nur messen, was deckend gezeichnet wird, 2) alles andere füllen
+            # (auch unter Kreisen/Linien), 3) zeichnen. Text und Flächen werden so
+            # direkt überschrieben, ohne dass vorher ein leeres Feld zu sehen ist.
+            c.track_start(mute=True)
+            try:
+                r.paint(c, r.rect)
+            finally:
+                rects = c.track_stop()
+            c.fill_gaps(r.rect, rects, r.clear)
+            r.paint(c, r.rect)
+            return
         if not r.opaque:
-            self.canvas.fill_rect(r.rect, r.clear)
-        r.paint(self.canvas, r.rect)
+            c.fill_rect(r.rect, r.clear)
+        r.paint(c, r.rect)

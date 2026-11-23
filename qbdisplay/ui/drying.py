@@ -44,24 +44,35 @@ class DryingPage(Page):
 
         clim = Rect(100, 52, 420, 140)
 
+        half = (clim.w - 32) // 2
+        cols = (('therm', _('Box-Temperatur'), model.fmt_temp(temp), ' °C', 'text',
+                 _('Heizung an') if heating else _('Heizung aus')),
+                ('drop', _('Luftfeuchte'), model.fmt_temp(hum), ' %', hfg,
+                 rating if hum is not None else _('kein Sensorwert')))
+
         def paint_clim(c, r):
             W.tile(c, r)
-            half = (r.w - 32) // 2
-            for k, (icon, label, val, unit, fg, capt) in enumerate((
-                    ('therm', _('Box-Temperatur'), model.fmt_temp(temp), ' °C', 'text',
-                     _('Heizung an') if heating else _('Heizung aus')),
-                    ('drop', _('Luftfeuchte'), model.fmt_temp(hum), ' %', hfg,
-                     rating if hum is not None else _('kein Sensorwert')))):
+            for k, (icon, label, _v, _u, fg, _c) in enumerate(cols):
                 x = r.x + 16 + k * (half + 12)
                 if k:
                     c.fill(x - 10, r.y + 16, 1, r.h - 32, 'line')
                 W.header(c, r, icon, label, x=x, y=r.y + 12,
                          icon_fg=(fg if fg != 'text' else 'accent') if k else 'accent')
-                W.value_unit(c, x, r.y + 42, 64, val, unit, F.HUGE, F.BTN, fg, 'surface')
-                c.text(x, r.y + 110, half - 8, 18, capt, F.CAP,
-                       'warn' if (k and fg in ('warn', 'err')) else 'text3', 'surface')
-        frame.region('clim', clim, (model.fmt_temp(temp), model.fmt_temp(hum), heating, rating),
-                     paint_clim)
+        frame.region('clim', clim, hfg, paint_clim)
+        # Messwerte und Zeile darunter einzeln: nur sie ändern sich laufend
+        for k, (_i, _l, val, unit, fg, capt) in enumerate(cols):
+            x = clim.x + 16 + k * (half + 12)
+
+            def paint_v(c, r, val=val, unit=unit, fg=fg):
+                W.value_unit(c, r.x, r.y, 64, val, unit, F.HUGE, F.BTN, fg, 'surface')
+            frame.region('clim.v%d' % k, Rect(x, clim.y + 42, half - 8, 64), (val, fg), paint_v,
+                         clear='surface', gaps=True)
+            cfg_ = 'warn' if (k and fg in ('warn', 'err')) else 'text3'
+
+            def paint_c(c, r, capt=capt, cfg_=cfg_):
+                c.text(r.x, r.y, r.w, r.h, capt, F.CAP, cfg_, 'surface')
+            frame.region('clim.c%d' % k, Rect(x, clim.y + 110, half - 8, 18), (capt, cfg_),
+                         paint_c, clear='surface', gaps=True)
 
         def paint_cap(c, r):
             c.fill_rect(r, 'bg')
@@ -141,13 +152,13 @@ class DryingPage(Page):
             def paint_val(c, r, val=val):
                 c.text(r.x, r.y, r.w, r.h, val, F.VAL, 'text', 'surface', 'center')
             frame.region('val.' + key, Rect(right.x + 74, y + 12, right.w - 148, 32), val,
-                         paint_val, clear='surface')
+                         paint_val, clear='surface', gaps=True)
         eta = model.fmt_clock(ctx.now + sel['hours'] * 3600, ctx.now)
 
         def paint_eta(c, r):
             c.label_right(r.x2, r.y, eta, F.BTN, 'text', 'surface', h=24)
         frame.region('eta', Rect(right.x + 100, right.y + 232, right.w - 114, 24), eta, paint_eta,
-                     clear='surface')
+                     clear='surface', gaps=True)
         st = Rect(right.x + 14, right.y2 - 14 - 64, right.w - 28, 64)
         pr = ctx.pressed == 'start'
         label = _('Übernehmen') if ctx.drying.active else _('Trocknen starten')
@@ -187,11 +198,15 @@ class DryingPage(Page):
                 c.disc(kx, ky, 12, colors.mix('surface', 'accent', 0.35))
                 c.disc(kx, ky, 10, 'accent')
                 c.disc(kx, ky, 4, 'white')
-            c.text(r.cx - 64, r.cy - 34, 128, 40, rem, F.BIG, 'text', 'surface', 'center')
-            c.text(r.cx - 64, r.cy + 10, 128, 20,
+        frame.region('ring', ring, pct, paint_ring, clear='surface')
+
+        def paint_rem(c, r):
+            c.text(r.x, r.y, r.w, 40, rem, F.BIG, 'text', 'surface', 'center')
+            c.text(r.x, r.y + 44, r.w, 20,
                    (_('übrig · %d %%') % pct) if pct is not None else _('Restzeit unbekannt'),
                    F.LBL, 'text2', 'surface', 'center')
-        frame.region('ring', ring, (rem, pct), paint_ring, clear='surface')
+        frame.region('ring.t', Rect(ring.cx - 64, ring.cy - 34, 128, 64), (rem, pct), paint_rem,
+                     clear='surface', gaps=True)
         since = model.fmt_duration(ctx.now - dv.start, 'clock') if dv.known else '–'
         start_s = model.fmt_clock(dv.start, ctx.now) if dv.known else ''
         end_s = model.fmt_clock(dv.end, ctx.now) if dv.known else '–'
@@ -212,7 +227,7 @@ class DryingPage(Page):
             c.text(r.x, r.y + 140, r.w, 18, W.caps(_('Fertig ca.')), F.CAP, 'text3', 'surface')
             c.text(r.x, r.y + 160, r.w, 26, end_s, F.BTN, 'text', 'surface')
         frame.region('info', info, (prof, target, total_h, since, start_s, end_s), paint_info,
-                     clear='surface')
+                     clear='surface', gaps=True)
 
         btns = [('plus1', '+ 1 h', None, 'secondary', ctx.dry_extend),
                 ('change', _('Ändern'), 'sliders', 'secondary', ctx.dry_change),
@@ -237,11 +252,15 @@ class DryingPage(Page):
         def paint_t(c, r):
             W.tile(c, r)
             W.header(c, r, 'therm', _('Box-Temperatur'), icon_fg='heat')
-            W.value_unit(c, r.x + 16, r.y + 70, 64, temp, '/ %d °C' % target, F.HUGE, F.BTN,
-                         'text', 'surface', gap=6)
             c.text(r.x + 16, r.y2 - 34, r.w - 32, 18, _('Heizung an · Lüfter an'), F.CAP,
                    'text3', 'surface')
-        frame.region('t', t_rect, (temp, target), paint_t)
+        frame.region('t', t_rect, 0, paint_t)
+
+        def paint_tv(c, r):
+            W.value_unit(c, r.x, r.y, 64, temp, '/ %d °C' % target, F.HUGE, F.BTN,
+                         'text', 'surface', gap=6)
+        frame.region('t.v', Rect(t_rect.x + 16, t_rect.y + 70, t_rect.w - 32, 64),
+                     (temp, target), paint_tv, clear='surface', gaps=True)
         hum = dv.humidity
         mats = [s.material for s in ctx.slots if s.state != 'empty' and s.material]
         level, _r = model.humidity_rating(hum, mats)
@@ -250,16 +269,26 @@ class DryingPage(Page):
         if hum is not None and dv.hum_start is not None:
             delta = int(round(hum - dv.hum_start))
 
+        hs = dv.hum_start
+
         def paint_h(c, r):
             W.tile(c, r)
             W.header(c, r, 'drop', _('Luftfeuchte'), icon_fg=hfg if hfg != 'text' else 'accent')
-            W.value_unit(c, r.x + 16, r.y + 70, 64, model.fmt_temp(hum), '%', F.HUGE, F.BTN, hfg,
-                         'surface', gap=4)
+            c.text(r.x + 16, r.y2 - 34, r.w - 32, 18,
+                   (_('beim Start %d %%') % int(round(hs))) if hs is not None
+                   else _('Startwert unbekannt'), F.CAP, 'text3', 'surface')
+        frame.region('h', h_rect, (hfg, hs), paint_h)
+        htxt = model.fmt_temp(hum)
+
+        def paint_hv(c, r):
+            W.value_unit(c, r.x, r.y, 64, htxt, '%', F.HUGE, F.BTN, hfg, 'surface', gap=4)
+        frame.region('h.v', Rect(h_rect.x + 16, h_rect.y + 70, 120, 64), (htxt, hfg), paint_hv,
+                     clear='surface', gaps=True)
+
+        def paint_hd(c, r):
             if delta is not None and delta != 0:
-                W.chip(c, r.x2 - 16, r.y + 98, '%+d %%' % delta,
+                W.chip(c, r.x2, r.y + 2, '%+d %%' % delta,
                        'ready' if delta < 0 else 'warn', 'surface',
                        icon='down' if delta < 0 else 'up', right=True)
-            c.text(r.x + 16, r.y2 - 34, r.w - 32, 18,
-                   (_('beim Start %d %%') % int(round(dv.hum_start))) if dv.hum_start is not None
-                   else _('Startwert unbekannt'), F.CAP, 'text3', 'surface')
-        frame.region('h', h_rect, (model.fmt_temp(hum), delta, hfg), paint_h)
+        frame.region('h.d', Rect(h_rect.x2 - 16 - 96, h_rect.y + 96, 96, 32), delta, paint_hd,
+                     clear='surface')

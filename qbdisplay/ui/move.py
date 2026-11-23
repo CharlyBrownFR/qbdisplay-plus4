@@ -121,15 +121,20 @@ class MovePage(Page):
             else:
                 W.chip(c, r.x2 - 14, r.y + 12, _('nicht referenziert'), 'warn', 'surface',
                        right=True)
-            cw = (r.w - 28) // 3
+        frame.region('pos', pr_, ref, paint_pos)
+
+        def paint_xyz(c, r):
+            cw = r.w // 3
             for i, (ax, val) in enumerate(zip('XYZ', ptxt)):
-                x = r.x + 14 + i * cw
+                x = r.x + i * cw
                 if i:
-                    c.fill(x - 8, r.y + 52, 1, 28, 'line')
-                x2 = c.label(x, r.y + 52, ax, F.LBL, 'accent', 'surface', h=32)
-                c.label(x2 + 4, r.y + 50, val, F.VAL, 'text', 'surface',
+                    c.fill(x - 8, r.y + 2, 1, 28, 'line')
+                x2 = c.label(x, r.y + 2, ax, F.LBL, 'accent', 'surface', h=32)
+                c.label(x2 + 4, r.y, val, F.VAL, 'text', 'surface',
                         max_w=cw - (x2 + 4 - x) - 8)
-        frame.region('pos', pr_, (ptxt, ref), paint_pos)
+        # nur die Zahlen neu zeichnen, nicht die ganze Kachel
+        frame.region('pos.v', Rect(pr_.x + 14, pr_.y + 50, pr_.w - 28, 34), ptxt, paint_xyz,
+                     clear='surface', gaps=True)
 
         def paint_cap(c, r):
             c.fill_rect(r, 'bg')
@@ -175,8 +180,12 @@ class MovePage(Page):
             W.tile(c, r)
             W.header(c, r, 'nozzle', _('Extruder'), x=r.x + 14, y=r.y + 12,
                      icon_fg='heat' if etarget > 0 else 'accent')
-            c.label_right(r.x2 - 14, r.y + 15, cap, F.CAP, 'text3', 'surface')
-        frame.region('ex', ex, cap, paint_ex)
+        frame.region('ex', ex, etarget > 0, paint_ex)
+
+        def paint_cap(c, r):
+            c.label_right(r.x2, r.y + 3, cap, F.CAP, 'text3', 'surface')
+        frame.region('ex.cap', Rect(ex.x + 150, ex.y + 12, ex.w - 164, 22), cap, paint_cap,
+                     clear='surface', gaps=True)
         frame.target('ex.temp', Rect(ex.x, ex.y, ex.w, 48), (lambda: ctx.open_temp('extruder')))
         bw = (ex.w - 28 - 8) // 2
         for i, (tid, label, icon, dist) in enumerate((

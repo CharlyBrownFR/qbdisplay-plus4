@@ -66,7 +66,8 @@ def build_statusbar(frame, ctx, title):
         x = c.label(24, 11, W.caps(title), F.LBL, 'text', 'bar', max_w=220)
         W.pill_state(c, x + 12, 7, text, kind)
     left = Rect(0, 0, 420, STATUS_H - 1)
-    frame.region('sb.left', left, (title, text, kind), paint_left, clear='bar', parent='sb.bg')
+    frame.region('sb.left', left, (title, text, kind), paint_left, clear='bar', parent='sb.bg',
+                 gaps=True)
     if ctx.pstate in ('paused_error', 'error'):
         frame.target('sb.pill', left, ctx.show_error)
 
@@ -76,7 +77,7 @@ def build_statusbar(frame, ctx, title):
     def paint_clock(c, r):
         c.label_right(784, 10, clock, F.LBL, 'text', 'bar', h=20)
     frame.region('sb.clock', Rect(730, 0, 56, STATUS_H - 1), clock, paint_clock,
-                 clear='bar', parent='sb.bg')
+                 clear='bar', parent='sb.bg', gaps=True)
 
     net = ctx.net
     wicon = 'wifi' if net.get('iface_kind') == 'wifi' else (
@@ -111,7 +112,7 @@ def build_statusbar(frame, ctx, title):
         x = c.label_right(566, 10, ctext, F.LBL, fg, 'bar', h=20)
         c.icon('sun' if heating else 'box', x - 24, 11, 18, fg, 'bar')
     frame.region('sb.climate', Rect(420, 0, 156, STATUS_H - 1), (ctext, fg), paint_climate,
-                 clear='bar', parent='sb.bg')
+                 clear='bar', parent='sb.bg', gaps=True)
 
 
 def build_nav(frame, ctx, section):

@@ -270,16 +270,22 @@ class BoxPage(Page):
             W.header(c, r, 'box', btitle, x=r.x + 14)
             if multi:
                 c.icon('chev', r.x2 - 14 - 20, r.y + 15, 20, 'accent', 'surface')
-            x = W.value_unit(c, r.x + 14, r.y + 46, 32, model.fmt_temp(temp), ' °C', F.VAL,
-                             F.LBL, 'text', 'surface')
-            c.fill(x + 12, r.y + 52, 1, 24, 'line')
-            W.value_unit(c, x + 26, r.y + 46, 32, model.fmt_temp(hum), ' %', F.VAL, F.LBL, hfg,
-                         'surface')
-            c.text(r.x + 14, r.y + 86, r.w - 28, 18, line, F.CAP,
-                   'heat' if dv.active else ('warn' if level in ('warn', 'err') else 'text3'),
-                   'surface')
-        frame.region('clim', tile, (btitle, multi, model.fmt_temp(temp), model.fmt_temp(hum),
-                                    line, hfg), paint)
+        frame.region('clim', tile, (btitle, multi), paint)
+        # wechselnde Werte als eigene Regionen: nur sie werden neu gezeichnet
+        vals = (model.fmt_temp(temp), model.fmt_temp(hum), hfg)
+
+        def paint_vals(c, r):
+            x = W.value_unit(c, r.x, r.y, 32, vals[0], ' °C', F.VAL, F.LBL, 'text', 'surface')
+            c.fill(x + 12, r.y + 6, 1, 24, 'line')
+            W.value_unit(c, x + 26, r.y, 32, vals[1], ' %', F.VAL, F.LBL, hfg, 'surface')
+        frame.region('clim.v', Rect(tile.x + 14, tile.y + 46, tile.w - 28, 32), vals, paint_vals,
+                     clear='surface', gaps=True)
+        lfg = 'heat' if dv.active else ('warn' if level in ('warn', 'err') else 'text3')
+
+        def paint_line(c, r):
+            c.text(r.x, r.y, r.w, r.h, line, F.CAP, lfg, 'surface')
+        frame.region('clim.l', Rect(tile.x + 14, tile.y + 86, tile.w - 28, 18), (line, lfg),
+                     paint_line, clear='surface', gaps=True)
         if multi:
             nxt = units[(units.index(unit) + 1) % len(units)]
             frame.target('clim.next', Rect(tile.x, tile.y, tile.w, 96),

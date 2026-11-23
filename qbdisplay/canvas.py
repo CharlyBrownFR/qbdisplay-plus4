@@ -87,6 +87,37 @@ class ListSink(object):
         self.commands.append(cmd)
 
 
+def uncovered(r, rects):
+    """Rechtecke, die ``r`` abdecken, ohne ``rects`` zu berühren (Streifen-Zerlegung)."""
+    clipped = []
+    for q in rects:
+        x0, y0 = max(r.x, q.x), max(r.y, q.y)
+        x1, y1 = min(r.x2, q.x2), min(r.y2, q.y2)
+        if x0 < x1 and y0 < y1:
+            clipped.append((x0, y0, x1, y1))
+    ys = sorted(set([r.y, r.y2] + [c[1] for c in clipped] + [c[3] for c in clipped]))
+    out = []
+    open_ = {}      # (x0, x1) -> y0 eines noch offenen Streifens
+    for ya, yb in zip(ys, ys[1:]):
+        spans = sorted((c[0], c[2]) for c in clipped if c[1] <= ya and c[3] >= yb)
+        gaps, x = [], r.x
+        for a, b in spans:
+            if a > x:
+                gaps.append((x, a))
+            x = max(x, b)
+        if x < r.x2:
+            gaps.append((x, r.x2))
+        nxt = {}
+        for g in gaps:
+            nxt[g] = open_.pop(g, ya)
+        for (a, b), y0 in open_.items():
+            out.append(Rect(a, y0, b - a, ya - y0))
+        open_ = nxt
+    for (a, b), y0 in open_.items():
+        out.append(Rect(a, y0, b - a, r.y2 - y0))
+    return out
+
+
 class Canvas(object):
     """Zeichenprimitive. ``dim`` > 0 mischt alle Farben mit dem Scrim
     (Hintergrund hinter Dialogen) und lässt Bilder weg."""
@@ -100,6 +131,28 @@ class Canvas(object):
         self.missing_icon_cb = missing_icon_cb
         self._warned = set()
         self.count = 0
+        self._track = None
+        self._mute = False
+
+    # -- Abdeckung (für Regionen, die ohne vorheriges Löschen zeichnen) ----
+    def track_start(self, mute=False):
+        """Merkt sich ab jetzt, welche Flächen sicher deckend übermalt werden
+        (fill, Text, Bilder). ``mute``: nur messen, nichts senden."""
+        self._track = []
+        self._mute = mute
+
+    def track_stop(self):
+        rects, self._track, self._mute = self._track or [], None, False
+        return rects
+
+    def _cover(self, x, y, w, h):
+        if self._track is not None and w > 0 and h > 0:
+            self._track.append(Rect(int(x), int(y), int(w), int(h)))
+
+    def fill_gaps(self, r, rects, color):
+        """Füllt alles in ``r``, was nicht von ``rects`` bedeckt ist."""
+        for g in uncovered(r, rects):
+            self.fill_rect(g, color)
 
     # -- Ausgabe -----------------------------------------------------------
     def _c(self, color):
@@ -109,6 +162,8 @@ class Canvas(object):
         return colors.rgb565(c)
 
     def raw(self, cmd):
+        if self._mute:
+            return
         self.count += 1
         self.sink.send(cmd)
 
@@ -120,6 +175,7 @@ class Canvas(object):
         x, y, w, h = int(x), int(y), int(w), int(h)
         if w <= 0 or h <= 0:
             return
+        self._cover(x, y, w, h)
         self.raw('fill %d,%d,%d,%d,%d' % (x, y, w, h, self._c(color)))
 
     def fill_rect(self, r, color):
@@ -258,6 +314,7 @@ class Canvas(object):
         if w <= 0 or h <= 0:
             return
         s = fonts.ellipsize(text, fid, w) if ellipsis else fonts.sanitize(text)
+        self._cover(x, y, w, h)
         self.raw('xstr %d,%d,%d,%d,%d,%d,%d,%d,%d,1,"%s"' % (
             int(x), int(y), int(w), int(h), fid, self._c(fg), self._c(bg),
             ALIGN[align], VALIGN[valign], s))
@@ -300,4 +357,5 @@ class Canvas(object):
                 log.warning('Icon fehlt in der TJC-Datei: %s', key)
             if pid is None:
                 return
+        self._cover(x, y, size, size)
         self.raw('pic %d,%d,%d' % (int(x), int(y), pid))

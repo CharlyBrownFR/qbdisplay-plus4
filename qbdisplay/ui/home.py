@@ -103,7 +103,7 @@ class HomePage(Page):
             def paint_val(c, r, vtxt=vtxt):
                 W.value_unit(c, r.x, r.y, 64, vtxt, '°C', F.HUGE, F.BTN, 'text', 'surface')
             frame.region(tid + '.v', Rect(rect.x + 16, rect.y + 48, 120, 64), vtxt, paint_val,
-                         clear='surface')
+                         clear='surface', gaps=True)
 
             def paint_chip(c, r, heating=heating, target=target):
                 if heating:
@@ -118,9 +118,10 @@ class HomePage(Page):
 
             def paint_heat(c, r, frac=frac, heating=heating):
                 if heating:
-                    W.bar(c, r, frac, 'heat', 'surface3')
-            frame.region(tid + '.h', Rect(rect.x + 16, rect.y2 - 16, rect.w - 32, 6),
-                         (heating, int(frac * 40)), paint_heat, clear='surface')
+                    W.bar(c, Rect(r.x + 2, r.y + 2, r.w - 4, 6), frac, 'heat', 'surface3')
+            # 2 px Rand: die runden Enden ragen etwas über den Balken hinaus
+            frame.region(tid + '.h', Rect(rect.x + 14, rect.y2 - 18, rect.w - 28, 10),
+                         (heating, int(frac * 40)), paint_heat, clear='surface', gaps=True)
             frame.target(tid, rect, (lambda k=key: ctx.open_temp(k)))
 
         # --- Zuletzt gedruckt --------------------------------------------
@@ -278,13 +279,21 @@ class HomePage(Page):
         pct = int(pv.progress * 100)
 
         def paint_name(c, r):
-            c.text(r.x, r.y, r.w - 110, 32, model.short_filename(pv.filename), F.VAL, 'text',
+            c.text(r.x, r.y, r.w, r.h, model.short_filename(pv.filename), F.VAL, 'text',
                    'surface')
-            c.label_right(r.x2, r.y - 6, '%d %%' % pct, F.BIG, pct_fg, 'surface')
-            W.bar(c, Rect(r.x, r.y + 44, r.w, 8), pv.progress, pct_fg, knob=True)
-        frame.region('pname', Rect(x0, top.y + 14, w0, 58), (pv.filename, pct, pct_fg,
-                                                             int(pv.progress * 500)),
-                     paint_name, clear='surface')
+        frame.region('pname', Rect(x0, top.y + 14, w0 - 110, 32), pv.filename, paint_name,
+                     clear='surface', gaps=True)
+
+        def paint_pct(c, r):
+            c.label_right(r.x2, r.y, '%d %%' % pct, F.BIG, pct_fg, 'surface')
+        frame.region('ppct', Rect(x0 + w0 - 108, top.y + 8, 108, F.height(F.BIG)),
+                     (pct, pct_fg), paint_pct, clear='surface', gaps=True)
+        prog = pv.progress
+
+        def paint_bar(c, r):
+            W.bar(c, Rect(r.x + 6, r.y + 4, r.w - 12, 8), prog, pct_fg, knob=True)
+        frame.region('pbar', Rect(x0 - 6, top.y + 54, w0 + 12, 17),
+                     (int(prog * 500), pct_fg), paint_bar, clear='surface', gaps=True)
         cols = [(_('Schicht'), ('%s' % (pv.layer if pv.layer is not None else '–'),
                              '/ %s' % pv.total_layers if pv.total_layers else '')),
                 (_('Restzeit'), (model.fmt_duration(pv.remaining), '')),
@@ -302,7 +311,8 @@ class HomePage(Page):
                             max_w=r.w - 6)
                 if extra:
                     c.label(x + 4, r.y + 22, extra, F.VAL, 'text3', 'surface', max_w=r.x2 - x - 4)
-            frame.region('pstat%d' % i, rr, (val, extra), paint_stat, clear='surface')
+            frame.region('pstat%d' % i, rr, (val, extra), paint_stat, clear='surface',
+                         gaps=True)
 
         # --- Farbwechsel-Panel --------------------------------------------
         panel = Rect(100, 216, 684, 128)
@@ -323,19 +333,30 @@ class HomePage(Page):
             tid = 'ptemp.' + key
             pressed = ctx.pressed == tid
 
-            def paint_t(c, r, icon=icon, label=label, temp=temp, target=target, pressed=pressed):
+            def paint_t(c, r, icon=icon, label=label, heat=target > 0, pressed=pressed):
                 W.tile(c, r, border='accent' if pressed else 'line', bw=2 if pressed else 1)
-                c.icon(icon, r.x + 12, r.y + 12, 18, 'heat' if target > 0 else 'accent',
-                       'surface')
+                c.icon(icon, r.x + 12, r.y + 12, 18, 'heat' if heat else 'accent', 'surface')
                 c.text(r.x + 36, r.y + 12, r.w - 44, 18, W.caps(_(label)), F.CAP, 'text2',
                        'surface')
-                xx = c.label(r.x + 12, r.y + 42, model.fmt_temp(temp), F.VAL, 'text', 'surface')
+            frame.region(tid, rect, (target > 0, pressed), paint_t)
+            ttxt = model.fmt_temp(temp)
+
+            def paint_tv(c, r, ttxt=ttxt, target=target):
+                xx = c.label(r.x, r.y, ttxt, F.VAL, 'text', 'surface')
                 unit = (' / %d°' % target) if target > 0 else ' °C'
-                c.label(xx, r.y + 51, unit, F.LBL, 'text3', 'surface', max_w=r.x2 - xx - 6)
-                if target > 0 and temp is not None:
-                    W.bar(c, Rect(r.x + 12, r.y2 - 16, r.w - 24, 4),
-                          max(0.0, min(1.0, float(temp) / float(target))), 'heat')
-            frame.region(tid, rect, (model.fmt_temp(temp), target, pressed), paint_t)
+                c.label(xx, r.y + 9, unit, F.LBL, 'text3', 'surface', max_w=r.x2 - xx)
+            frame.region(tid + '.v', Rect(rect.x + 12, rect.y + 42, rect.w - 18, 32),
+                         (ttxt, target), paint_tv, clear='surface', gaps=True)
+            tfrac = None
+            if target > 0 and temp is not None:
+                tfrac = max(0.0, min(1.0, float(temp) / float(target)))
+
+            def paint_tb(c, r, tfrac=tfrac):
+                if tfrac is not None:
+                    W.bar(c, Rect(r.x + 2, r.y + 2, r.w - 4, 4), tfrac, 'heat')
+            frame.region(tid + '.h', Rect(rect.x + 10, rect.y2 - 18, rect.w - 20, 8),
+                         None if tfrac is None else int(tfrac * 100), paint_tb, clear='surface',
+                         gaps=True)
             frame.target(tid, rect, (lambda k=key: ctx.open_temp(k)))
         paused = ctx.pstate in ('paused', 'paused_error')
         btns = [
