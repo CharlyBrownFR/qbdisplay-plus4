@@ -309,12 +309,20 @@ class TjcDisplay(object):
         return None
 
     def _probe(self, baud):
-        self.port.set_baud(baud)
+        try:
+            self.port.set_baud(baud)
+        except (ValueError, OSError) as e:
+            log.debug('Baudrate %d übersprungen: %s', baud, e)
+            return False
         self.baud = baud
         time.sleep(0.05)
         self.port.flush_input()
         self._any_frame.clear()
-        self.port.write(TERM + encode_command('sendme', self.encoding))
+        # erst wecken: ein schlafendes Display (Bildschirmschoner) antwortet sonst
+        # nicht auf ``sendme`` – z. B. nach einem Neustart des Dienstes per Update
+        self.port.write(TERM + encode_command('sleep=0', self.encoding))
+        time.sleep(0.05)
+        self.port.write(encode_command('sendme', self.encoding))
         return self._any_frame.wait(0.35)
 
     def change_baud(self, new_baud, persist=False):
@@ -330,7 +338,7 @@ class TjcDisplay(object):
 
     def init_display(self, sleep_after=0):
         """Grundeinstellungen nach Start/Reset des Displays."""
-        for cmd in ('bkcmd=3', 'sendxy=1', 'thup=1', 'thsp=%d' % int(sleep_after), 'page 0'):
+        for cmd in ('sleep=0', 'bkcmd=3', 'sendxy=1', 'thup=1', 'thsp=%d' % int(sleep_after), 'page 0'):
             self.send(cmd)
 
     # -- Senden ------------------------------------------------------------

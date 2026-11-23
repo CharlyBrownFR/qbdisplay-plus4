@@ -144,6 +144,24 @@ class DisplayFlowTest(unittest.TestCase):
         self.assertEqual(len(port.written), 20)
         self.assertFalse(d._ack_mode)
 
+    def test_probe_wakes_display_first(self):
+        port = FakePort(ack=True)
+        d = self.make(port)
+        self.assertEqual(d.detect_baud(), 115200)
+        joined = b''.join(port.written)
+        self.assertLess(joined.index(b'sleep=0'), joined.index(b'sendme'))
+
+    def test_unsupported_baud_skipped(self):
+        # termios kennt nicht jede Baudrate (z. B. 512000): überspringen statt abstürzen
+        class Picky(FakePort):
+            def set_baud(self, b):
+                if b == 512000:
+                    raise ValueError('nicht unterstützt')
+                self.baud = b
+        port = Picky(ack=False)
+        d = self.make(port)
+        self.assertIsNone(d.detect_baud(candidates=(115200, 512000, 9600)))
+
     def test_touch_event_forwarded(self):
         port = FakePort(ack=False)
         got = []

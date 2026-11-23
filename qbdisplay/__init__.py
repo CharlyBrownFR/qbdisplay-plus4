@@ -29,4 +29,4 @@ Muss mit Python 3.7 (Debian 10 auf dem Drucker) laufen, nur Standardbibliothek
 (+ optional pyserial).
 """
 
-__version__ = "0.4.3"
+__version__ = "0.4.4"
