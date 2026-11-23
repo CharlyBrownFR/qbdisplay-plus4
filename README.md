@@ -49,9 +49,15 @@ Spielt die gesicherte QIDI-Display-Datei wieder auf (ca. 7 min) und startet QIDI
 
 ## Gut zu wissen
 
-- **Updates:** Unter System → Info & Update sucht „Suchen“ nach neuen Versionen der QIDI-Firmware
-  und von qbdisplay. QIDI-Updates selbst laufen über QIDIs Oberfläche: „Zu QIDI“ wechselt direkt am
-  Display zurück (ca. 7 min), dann wie gewohnt updaten, danach wieder `./install.sh`.
+- **Updates von qbdisplay (ab 0.4):** System → Info & Update → „Suchen“, dann „Installieren“.
+  Das Paket wird von GitHub geladen und gegen die Prüfsumme geprüft; startet die neue Version nicht,
+  geht es automatisch zurück zur alten. Testversionen gibt es nur mit `prerelease: yes` im Abschnitt
+  `[update]` der `qbdisplay.cfg`.
+- **Von 0.3.x oder älter** einmal von Hand aktualisieren: neues Paket entpacken, den alten Ordner
+  beiseitelegen (`mv qbdisplay qbdisplay-alt`), neuen Ordner in `qbdisplay` umbenennen,
+  `./install.sh` ausführen. Danach geht es am Display.
+- **QIDI-Updates** laufen über QIDIs Oberfläche: „Zu QIDI“ wechselt direkt am Display zurück
+  (ca. 7 min), dann wie gewohnt updaten, danach wieder `./install.sh`.
 - **QIDI-Cloud/App:** entfallen mit qbdisplay (QIDI Studio im LAN funktioniert weiter).
 - **Nach Stromausfall** fragt qbdisplay (noch) nicht nach dem Fortsetzen des Drucks.
 - **Mehrere Boxen:** Anzeige und Laden aller Boxen; Trocknen am Display bisher nur für Box 1.
@@ -114,9 +120,15 @@ cd ~/qbdisplay && ./uninstall.sh
 
 ## Good to know
 
-- **Updates:** System → Info & Update → "Check" looks for new QIDI firmware and qbdisplay versions.
-  QIDI updates run through QIDI's UI: "To QIDI" switches back right on the display (about 7 min),
-  update as usual, then run `./install.sh` again.
+- **qbdisplay updates (from 0.4):** System → Info & Update → "Check", then "Install". The package
+  is downloaded from GitHub and verified against its checksum; if the new version does not start,
+  the old one is restored automatically. Test versions are only offered with `prerelease: yes` in
+  the `[update]` section of `qbdisplay.cfg`.
+- **From 0.3.x or older** update once by hand: extract the new package, move the old folder aside
+  (`mv qbdisplay qbdisplay-old`), rename the new folder to `qbdisplay`, run `./install.sh`. After
+  that, updates work from the display.
+- **QIDI updates** run through QIDI's UI: "To QIDI" switches back right on the display (about
+  7 min), update as usual, then run `./install.sh` again.
 - **QIDI cloud/app** are not available with qbdisplay (QIDI Studio on the LAN keeps working).
 - **After a power loss** qbdisplay does not (yet) offer to resume the print.
 - **Several boxes:** all boxes are shown and can be loaded; drying from the display covers box 1
