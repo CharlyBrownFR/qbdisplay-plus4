@@ -146,16 +146,16 @@ class Renderer(object):
     def _paint(self, r):
         c = self.canvas
         if r.gaps:
-            # 1) nur messen, was deckend gezeichnet wird, 2) alles andere füllen
-            # (auch unter Kreisen/Linien), 3) zeichnen. Text und Flächen werden so
-            # direkt überschrieben, ohne dass vorher ein leeres Feld zu sehen ist.
-            c.track_start(mute=True)
+            # 1) aufzeichnen, 2) alles, was nichts deckend übermalt, mit ``clear``
+            # füllen, 3) die Befehle senden, ohne Flächen, die ein späterer Befehl
+            # ohnehin übermalt (Canvas.play). Text, Flächen und Kreise werden so
+            # direkt überschrieben, ohne leeres Feld oder Zwischenfarbe.
+            c.record_start()
             try:
                 r.paint(c, r.rect)
             finally:
-                rects = c.track_stop()
-            c.fill_gaps(r.rect, rects, r.clear)
-            r.paint(c, r.rect)
+                ops = c.record_stop()
+            c.play(r.rect, ops, r.clear)
             return
         if not r.opaque:
             c.fill_rect(r.rect, r.clear)

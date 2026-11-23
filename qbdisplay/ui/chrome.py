@@ -61,13 +61,23 @@ def build_statusbar(frame, ctx, title):
 
     text, kind = state_pill(ctx)
 
+    # Pille und Text getrennt: ändert sich nur der Text ("Druckt · 14 %" -> "15 %"),
+    # wird nur er neu geschrieben; Fläche und Punkt bleiben stehen.
+    px = 24 + F.measure(F.ellipsize(W.caps(title), F.LBL, 220), F.LBL) + 2 + 12
+    pw = W.pill_width(text)
+
     def paint_left(c, r):
         c.fill(14, 12, 3, 16, 'accent')
-        x = c.label(24, 11, W.caps(title), F.LBL, 'text', 'bar', max_w=220)
-        W.pill_state(c, x + 12, 7, text, kind)
+        c.label(24, 11, W.caps(title), F.LBL, 'text', 'bar', max_w=220)
+        W.pill_shape(c, px, 7, pw, kind)
     left = Rect(0, 0, 420, STATUS_H - 1)
-    frame.region('sb.left', left, (title, text, kind), paint_left, clear='bar', parent='sb.bg',
+    frame.region('sb.left', left, (title, pw, kind), paint_left, clear='bar', parent='sb.bg',
                  gaps=True)
+
+    def paint_pill(c, r):
+        W.pill_text(c, px, 7, pw, text, kind)
+    frame.region('sb.pilltext', W.pill_text_rect(px, 7, pw), (text, kind), paint_pill,
+                 clear=W.PILL_COLORS[kind][0], parent='sb.left', gaps=True)
     if ctx.pstate in ('paused_error', 'error'):
         frame.target('sb.pill', left, ctx.show_error)
 
