@@ -1,5 +1,5 @@
 #!/bin/bash
-# qbdisplay – collect information about a QIDI Q2 (read only)
+# qbdisplay – collect information about a QIDI printer (Q2, Max4, Plus4, ...), read only
 #
 # Copyright (C) 2026  STRE
 #
@@ -10,31 +10,39 @@
 #
 # Only READS information, changes nothing, needs no sudo.
 # Run on the printer as user mks:
-#     bash q2-info.sh
-# Result: ~/q2-info.txt  (please have a look at it before you send it)
-# No IP addresses, Wi-Fi names, passwords or serial numbers are collected.
+#     bash printer-info.sh
+# Result: ~/printer-info.txt  (please have a look at it before you send it)
+# No IP addresses, Wi-Fi names, host names, passwords or serial numbers are collected.
 
-OUT="${OUT:-$HOME/q2-info.txt}"
+NAME="$(basename "${0%.sh}")"
+case "$NAME" in bash|sh|-bash) NAME=printer-info ;; esac
+OUT="${OUT:-$HOME/$NAME.txt}"
 API="http://127.0.0.1:7125"
 
 sec() { printf '\n===== %s =====\n' "$1"; }
 get() { curl -s --max-time 5 "$API$1" || echo "(no answer from Moonraker)"; }
 
 {
-echo "q2-info $(date -u '+%Y-%m-%d %H:%M UTC')"
+echo "printer-info $(date -u '+%Y-%m-%d %H:%M UTC')"
 
 sec "System"
 uname -srm
+tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
 grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release 2>/dev/null
 python3 --version 2>&1
 dpkg-query -W -f='${Package} ${Version}\n' 'qidi*' 2>/dev/null
-ls /home/mks 2>/dev/null | tr '\n' ' '; echo
+ls /home/mks 2>/dev/null | grep -iE 'QD_|xindi|tjc|qbdisplay|screen|client|klipper|moonraker|fluidd|mainsail' | tr '\n' ' '; echo
 
 sec "Display (framebuffer)"
-for f in name virtual_size bits_per_pixel stride rotate modes blank; do
-    printf '%-15s %s\n' "$f" "$(cat /sys/class/graphics/fb0/$f 2>/dev/null | tr '\n' ' ')"
+ls -l /dev/fb* 2>/dev/null || echo "(no /dev/fb*)"
+for fb in /sys/class/graphics/fb*; do
+    [ -e "$fb/name" ] || continue
+    echo "-- $fb"
+    for f in name virtual_size bits_per_pixel stride rotate modes blank; do
+        printf '%-15s %s\n' "$f" "$(cat "$fb/$f" 2>/dev/null | tr '\n' ' ')"
+    done
 done
-ls -l /dev/fb* 2>/dev/null
+ls /sys/class/drm 2>/dev/null | tr '\n' ' '; echo
 cat /sys/class/backlight/*/max_brightness 2>/dev/null | sed 's/^/backlight max: /'
 
 sec "Touch / input devices"
@@ -61,13 +69,20 @@ sec "Serial ports"
 ls -l /dev/ttyS* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
 
 sec "Display program and services"
-ps -eo pid,user,args | grep -E 'QD_Q2|xindi|qbdisplay' | grep -v grep
-for pid in $(pgrep -f 'QD_Q2/bin/client'); do
-    echo "cgroup of $pid: $(grep -o 'system.slice/[^ ]*' /proc/$pid/cgroup | head -1)"
+# QIDI's screen program: xindi (TJC display) on the Plus4, QD_*/bin/client (LVGL) on the Q2
+ps -eo pid,user,args \
+    | grep -E 'xindi|QD_|/client|qbdisplay|lvgl|screen|/home/mks/[^ ]*/bin/|^ *[0-9]+ +root +/root/' \
+    | grep -vE 'grep|klippy|moonraker|sshd|nginx|crowsnest|ustreamer'
+for pid in $(pgrep -f 'xindi|QD_|/client|qbdisplay'); do
+    echo "cgroup of $pid: $(grep -o 'system.slice/[^ ]*' /proc/$pid/cgroup 2>/dev/null | head -1)"
 done
 systemctl list-units --type=service --no-pager --no-legend 2>/dev/null \
-    | grep -iE 'client|makerbase|klipper|moonraker|qidi|algo|screen|display'
-for u in makerbase-client; do systemctl cat "$u" 2>/dev/null; done
+    | grep -iE 'client|makerbase|klipper|moonraker|qidi|xindi|algo|screen|display|qbdisplay'
+for u in $(systemctl list-units --type=service --no-pager --no-legend 2>/dev/null \
+        | grep -ioE '[a-z0-9_.@-]*(client|makerbase|xindi|screen|display)[a-z0-9_.@-]*\.service'); do
+    echo "-- $u"
+    systemctl show -p ExecStart -p User -p WorkingDirectory "$u" 2>/dev/null
+done
 
 sec "Klipper / Moonraker"
 get /printer/info | python3 -c '
@@ -83,11 +98,21 @@ get /server/info | head -c 1500
 echo
 
 sec "Klipper objects"
-get /printer/objects/list
-echo
+OBJS="$(get /printer/objects/list)"
+echo "$OBJS"
 
 sec "Box state"
-get "/printer/objects/query?box_extras&multi_color_controller&print_stats=state&heater_generic%20heater_box1&aht20_f%20heater_box1"
+Q="$(echo "$OBJS" | python3 -c '
+import json, sys, urllib.parse
+try:
+    objs = json.load(sys.stdin)["result"]["objects"]
+except Exception:
+    objs = []
+keys = ("box", "multi_color", "aht20", "slot", "buffer", "print_stats")
+print("&".join(urllib.parse.quote(o) for o in objs if any(k in o for k in keys)
+               and not o.startswith(("mcu", "gcode_macro"))))
+')"
+[ -n "$Q" ] && get "/printer/objects/query?$Q"
 echo
 echo "save_variables (box/slot/filament related only):"
 get "/printer/objects/query?save_variables" | python3 -c '
