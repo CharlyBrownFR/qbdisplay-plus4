@@ -154,4 +154,7 @@ MANIFEST = [
     ('layers', 30, 'text3', 'surface2'),  # 142
     ('light', 24, 'text3', 'surface'),  # 143
     ('info', 24, 'accent', 'surface'),  # 144
+    ('cloudoff', 32, 'warn', 'surface2'),  # 145
+    ('cloudoff', 20, 'warn', 'surface'),  # 146
+    ('link', 20, 'warn', 'surface'),  # 147
 ]

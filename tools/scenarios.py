@@ -245,6 +245,15 @@ def s_system_network(app):
     app.go('system', sys_sub='network')
 
 
+def s_system_network_cloud(app):
+    """Cloud und Fernzugriff laufen (so am Plus4 im Protokoll gesehen: Icons fehlten)."""
+    app.net = dict(app.net, lan_only=False,
+                   services=(('cloudoff', 'QIDI-Cloud / App', 'läuft'),
+                             ('link', 'Fernzugriff (QIDI Link)', 'läuft'),
+                             ('monitor', 'Slicer & Browser im LAN', 'aktiv')))
+    app.go('system', sys_sub='network')
+
+
 def s_system_box(app):
     app.go('system', sys_sub='box')
 
@@ -482,4 +491,5 @@ SCENARIOS = [
     ('31_system_update_bestaetigen', s_system_update_confirm),
     ('32_system_update_fehlgeschlagen', s_system_update_failed),
     ('33_system_update_testversion', s_system_update_test),
+    ('34_system_netzwerk_cloud', s_system_network_cloud),
 ]

@@ -105,6 +105,7 @@ class App(object):
         self.versions = {}
         self.update_info = {}
         self._update_result_shown = False
+        self._update_result_poll = None   # (nächste Prüfung, Ende) solange das Hilfsskript noch läuft
         self.page_name = 'home'
         self.pages = {}
         self.dialog = None
@@ -919,6 +920,12 @@ class App(object):
     def show_update_result(self):
         """Nach dem Neustart einmal melden, wie das letzte Update ausgegangen ist."""
         st = updates.read_status()
+        if st.get('state') == 'running':
+            # Hilfsskript wartet nach dem Neustart noch ~15 s, bevor es 'done' schreibt
+            end = self._update_result_poll[1] if self._update_result_poll else self.now + 300
+            self._update_result_poll = (self.now + 3, end) if self.now < end else None
+            return
+        self._update_result_poll = None
         if st.get('state') == 'done':
             self.notify(_('qbdisplay %s installiert') % st.get('to', ''), 'ok', 8.0)
         elif st.get('state') == 'failed':
@@ -1128,6 +1135,8 @@ class App(object):
         if self._toast and self._toast[2] < now:
             self._toast = None
             self.mark_dirty()
+        if self._update_result_poll and now >= self._update_result_poll[0]:
+            self.show_update_result()
 
     def run_forever(self):
         """Hauptschleife (Display und Moonraker müssen gestartet sein)."""

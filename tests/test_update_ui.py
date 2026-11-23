@@ -73,6 +73,36 @@ class UpdateUiTest(unittest.TestCase):
         self.assertEqual(cleared, [1])
         self.assertIn('0.4.1', app._toast[0])
 
+    def test_result_waits_while_helper_running(self):
+        # am Gerät: neuer Dienst verbindet sich, bevor das Hilfsskript 'done' schreibt
+        app = make_app()
+        t = [1000.0]
+        app.clock = lambda: t[0]
+        cleared = []
+        st = {'state': 'running', 'from': '0.4.0', 'to': '0.4.1'}
+        with mock.patch.object(updates, 'read_status', lambda: st), \
+                mock.patch.object(updates, 'clear_status', lambda: cleared.append(1)):
+            app._update_result_shown = False
+            app.handle('connected', None)
+            self.assertEqual(cleared, [])
+            st['state'] = 'done'
+            t[0] += 20
+            app.tick()
+        self.assertEqual(cleared, [1])
+        self.assertIn('0.4.1', app._toast[0])
+        self.assertIsNone(app._update_result_poll)
+
+    def test_result_poll_gives_up(self):
+        app = make_app()
+        t = [1000.0]
+        app.clock = lambda: t[0]
+        with mock.patch.object(updates, 'read_status', lambda: {'state': 'running'}):
+            app.show_update_result()
+            for _i in range(200):
+                t[0] += 3
+                app.tick()
+        self.assertIsNone(app._update_result_poll)
+
 
 if __name__ == '__main__':
     unittest.main()
