@@ -96,16 +96,44 @@ class Renderer(object):
         self.canvas = canvas
         self.prev = {}      # rid -> (key, rect, clear)
         self.layer = None   # Kennung der aktuellen Ebene (Seite/Dialog)
+        # schwebender Dialog über der stehenden Seite: (seiten_layer, seiten_prev, fläche)
+        self.overlay = None
 
     def invalidate(self):
         self.prev = {}
         self.layer = None
+        self.overlay = None
+
+    def render_overlay(self, page_frame, page_layer, frame, layer, area, full_bg='bg'):
+        """Dialog über der Seite, ohne sie abzudunkeln: die Seite bleibt stehen, nur
+        der Dialog (Fläche ``area``) wird gezeichnet. Beim Schließen stellt
+        :meth:`render` nur die Seite unter ``area`` wieder her."""
+        if self.layer == layer and self.overlay is not None:
+            return self.render(frame, layer)
+        if self.overlay is not None and self.overlay[0] == page_layer:
+            # anderer Dialog auf derselben Seite: erst die Seite unter dem alten herstellen
+            self.render(page_frame, page_layer, full_bg)
+        elif self.layer != page_layer:
+            self.render(page_frame, page_layer, full_bg)
+        self.overlay = (page_layer, self.prev, area)
+        self.prev = {}
+        self.layer = layer
+        return self.render(frame, layer)
 
     def render(self, frame, layer, full_bg='bg', dim_frame=None, dim=0.84):
         """Zeichnet ``frame``. Wechselt ``layer`` (Seite oder Dialog), wird alles
         neu gezeichnet; mit ``dim_frame`` zuerst die abgedunkelte Seite darunter.
         Gibt die Anzahl neu gezeichneter Regionen zurück."""
         c = self.canvas
+        if self.overlay is not None and layer != self.layer:
+            page_layer, page_prev, area = self.overlay
+            self.overlay = None
+            if layer == page_layer:
+                # Dialog geschlossen: nur die Fläche darunter neu (Seite stand still)
+                self.prev = dict((rid, v) for rid, v in page_prev.items()
+                                 if not _overlap(v[1], area))
+                self.layer = layer
+                c.fill_rect(area, full_bg)
         full = layer != self.layer
         if full:
             self.prev = {}

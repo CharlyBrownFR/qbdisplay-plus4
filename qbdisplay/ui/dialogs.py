@@ -21,6 +21,31 @@ from . import widgets as W
 
 # Farbe unter dem Dialog (abgedunkelte Seite) – für den Lichthof des Rahmens
 UNDER_DIALOG = colors.mix('bg', 'scrim', 0.8)
+SHADOW = 6          # dunkler Rand um schwebende Dialoge
+
+
+def shadow_area(frame):
+    """Fläche aller Dialog-Regionen plus Schattenrand (auf den Bildschirm begrenzt)."""
+    rs = [r.rect for r in frame.regions]
+    x0 = max(0, min(r.x for r in rs) - SHADOW)
+    y0 = max(0, min(r.y for r in rs) - SHADOW)
+    x1 = min(800, max(r.x + r.w for r in rs) + SHADOW)
+    y1 = min(480, max(r.y + r.h for r in rs) + SHADOW)
+    return Rect(x0, y0, x1 - x0, y1 - y0)
+
+
+def paint_shadow(c, r):
+    """Nur der Rand (das Innere übermalt der Dialog): hebt ihn von der Seite ab."""
+    s = SHADOW
+    c.fill(r.x, r.y, r.w, s, UNDER_DIALOG)
+    c.fill(r.x, r.y + r.h - s, r.w, s, UNDER_DIALOG)
+    c.fill(r.x, r.y + s, s, r.h - 2 * s, UNDER_DIALOG)
+    c.fill(r.x + r.w - s, r.y + s, s, r.h - 2 * s, UNDER_DIALOG)
+    # Ecken des abgerundeten Kastens: Lücken zwischen Rand und Rundung füllen
+    c.fill(r.x + s, r.y + s, 18, 18, UNDER_DIALOG)
+    c.fill(r.x + r.w - s - 18, r.y + s, 18, 18, UNDER_DIALOG)
+    c.fill(r.x + s, r.y + r.h - s - 18, 18, 18, UNDER_DIALOG)
+    c.fill(r.x + r.w - s - 18, r.y + r.h - s - 18, 18, 18, UNDER_DIALOG)
 
 
 def kicker(c, x, y, text, tick='accent'):

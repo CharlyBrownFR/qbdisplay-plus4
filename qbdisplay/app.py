@@ -1304,11 +1304,20 @@ class App(object):
         if self.dialog is not None:
             dframe = Frame()
             self.dialog.build(dframe)
-            # Vollbild-Dialog (Tastatur): Seite darunter nicht abgedunkelt mitzeichnen
-            full = getattr(self.dialog, 'fullscreen', False)
-            self.renderer.render(dframe, ('dialog', self.dialog.layer, self.page_name),
-                                 full_bg='surface' if full else 'bg',
-                                 dim_frame=None if full else frame)
+            layer = ('dialog', self.dialog.layer, self.page_name)
+            if getattr(self.dialog, 'fullscreen', False):
+                # Vollbild-Dialog (Tastatur): Seite darunter nicht mitzeichnen
+                self.renderer.render(dframe, layer, full_bg='surface')
+            else:
+                # schwebend über der stehenden Seite (Abdunkeln hieße: ganze Seite
+                # zweimal neu senden, beim Öffnen und beim Schließen)
+                area = dialogs.shadow_area(dframe)
+                sframe = Frame()
+                sframe.region('dlg.shadow', area, area, dialogs.paint_shadow, opaque=True)
+                sframe.regions.extend(dframe.regions)
+                sframe.targets = dframe.targets
+                self.renderer.render_overlay(frame, ('page', self.page_name), sframe, layer,
+                                             area)
             self.frame = dframe
         else:
             self.renderer.render(frame, ('page', self.page_name))
