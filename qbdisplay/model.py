@@ -110,6 +110,9 @@ class Status(object):
         return self.obj('save_variables').get('variables') or {}
 
 
+FREE_STEP = 10      # Notbewegung (ohne Referenzfahrt): größter Schritt in mm
+
+
 # ---------------------------------------------------------------------------
 # Druckerzustand
 # ---------------------------------------------------------------------------

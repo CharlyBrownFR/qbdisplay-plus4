@@ -154,10 +154,11 @@ def make_app(sink, status=None):
                       'metadata': dict(FRONT_META), 'tools': []}
     app._update_last_print_meta()
     ensure_sample_thumb()
+    app.thumb_mode = '6'            # Vorschauen wie bisher (Stufe einzeln in 42/43)
     for size in (164, 128):
-        n = max(4, size // app.thumb_block)
-        app._thumbs[('front.gcode', n)] = thumbs.load_mosaic(
-            app.cfg.get('printer', 'gcode_dir'), 'front.gcode', FRONT_META, n)
+        for mode in thumbs.MODES:
+            app._thumbs[('front.gcode', size, mode)] = thumbs.load_mosaic(
+                app.cfg.get('printer', 'gcode_dir'), 'front.gcode', FRONT_META, size, mode)
     app._status_changed()
     return app
 
@@ -367,6 +368,11 @@ def s_system_language(app):
     app.go('system', sys_sub='lang')
 
 
+def s_system_display_sharp(app):
+    app.thumb_mode = '3'
+    app.go('system', sys_sub='lang')
+
+
 EXTERNAL = {'identity': 'external', 'filament_info': {
     'filament_str': 'PLA Rapido', 'filament_type': 'PLA', 'color_rgb_str': ['#E8731A'],
     'vendor_str': 'QIDI', 'min_temp': 190, 'max_temp': 240}}
@@ -493,6 +499,28 @@ def s_wifi_connecting(app):
     app.wifi['connecting'] = 'FRITZ!Box 7590 XY'
 
 
+
+def s_move_unhomed(app):
+    app.st.update({'toolhead': {'homed_axes': '', 'position': [0, 0, 0, 0]},
+                   'gcode_move': {'gcode_position': [0, 0, 0, 0]}})
+    app._status_changed()
+    app.go('move', step=10.0)
+
+
+def s_move_free_confirm(app):
+    s_move_unhomed(app)
+    app.confirm_free_move()
+
+
+def s_move_free(app):
+    app.st.update({'toolhead': {'homed_axes': 'xyz', 'position': [152.5, 162.5, 142.5, 0]},
+                   'gcode_move': {'gcode_position': [152.5, 162.5, 132.5, 0]}})
+    app._status_changed()
+    app.free_move = True
+    app._free_last = app.now
+    app.go('move', step=1.0)
+
+
 SCENARIOS = [
     ('01_start_leerlauf', s_home_idle),
     ('02_start_druck_farbwechsel', s_home_print),
@@ -532,4 +560,8 @@ SCENARIOS = [
     ('36_wlan_passwort', s_wifi_password),
     ('37_wlan_sonderzeichen', s_wifi_password_symbols),
     ('38_wlan_verbinde', s_wifi_connecting),
+    ('39_bewegen_nicht_referenziert', s_move_unhomed),
+    ('40_notbewegung_bestaetigen', s_move_free_confirm),
+    ('41_notbewegung', s_move_free),
+    ('42_anzeige_vorschau_scharf', s_system_display_sharp),
 ]

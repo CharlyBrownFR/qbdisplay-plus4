@@ -25,7 +25,7 @@ DEFAULTS = {
         'sleep_after': '600',      # Sekunden ohne Berührung bis Display schläft (0 = nie)
         'brightness': '100',
         'thumbnails': 'yes',       # Vorschaubild als Mosaik zeichnen
-        'thumb_block': '6',        # Blockgröße des Mosaiks in Pixel
+        'thumb_block': 'auto',     # Mosaik: auto oder Blockgröße in Pixel (Vorgabe für System > Anzeige)
         # Sprache der Oberfläche: de | en. Nur Vorgabe – die Auswahl unter
         # System › Sprache wird in [state] file gespeichert und hat Vorrang.
         'language': 'de',

@@ -11,17 +11,19 @@
 from .. import __version__
 from .. import fonts as F
 from .. import i18n
+from .. import thumbs
 from .. import updates
 from ..i18n import _, N_
 from ..canvas import Rect
 from . import widgets as W
 from .chrome import Page
+from .home import paint_thumb
 
 SUBS = [
     ('network', 'wifi', N_('Netzwerk')),
     ('box', 'box', N_('Box')),
     ('calib', 'target', N_('Kalibrieren')),
-    ('lang', 'globe', N_('Sprache')),
+    ('lang', 'globe', N_('Anzeige')),
     ('info', 'info', N_('Info & Update')),
 ]
 
@@ -201,16 +203,82 @@ class SystemPage(Page):
                   _('Ergebnisse speichert Klipper erst nach SAVE_CONFIG (Weboberfläche).'))
 
     def build_lang(self, frame):
+        """Anzeige: Sprache und Vorschaubild-Stufe (beides gilt sofort und bleibt)."""
         ctx = self.ctx
         cur = i18n.get_language()
-        for i, (code, name) in enumerate(i18n.LANGUAGES):
-            on = code == cur
-            # Sprachname in der eigenen Sprache, darunter der Zustand
-            self._row(frame, 'r.lang.' + code, 52 + i * 84, name,
-                      _('aktiv') if on else _('Antippen zum Wechseln'), toggle=on,
-                      action=None if on else (lambda c=code: ctx.set_language(c)))
-        self._row(frame, 'r.langnote', 220, _('Hinweis'),
-                  _('Gilt sofort und bleibt nach einem Neustart erhalten.'))
+
+        def paint_cap(c, r, text):
+            c.fill_rect(r, 'bg')
+            W.caption(c, r.x, r.y, text, 'bg')
+
+        def segment(sid, y, cap, items, selected, prefix, action):
+            frame.region(sid + '.cap', Rect(AREA.x, y, AREA.w, 18), cap,
+                         lambda c, r: paint_cap(c, r, cap), opaque=True)
+            rect = Rect(AREA.x, y + 22, AREA.w, 58)
+            labels = [label for _k, label in items]
+
+            def paint(c, r):
+                W.seg(c, r, labels, selected, fid=F.LBL)
+            frame.region(sid, rect, (tuple(labels), selected), paint)
+            n = len(items)
+            sw = (rect.w - 8 - 4 * (n - 1)) / float(n)
+            for i, (key, _label) in enumerate(items):
+                frame.target(prefix + key, Rect(rect.x + 4 + i * (sw + 4), rect.y, sw, rect.h),
+                             (lambda k=key: action(k)))
+
+        langs = list(i18n.LANGUAGES)
+        segment('lang', 52, _('Sprache'), langs, [c for c, _n in langs].index(cur), 'r.lang.',
+                lambda code: None if code == cur else ctx.set_language(code))
+
+        mode = ctx.thumb_mode
+        modes = [('6', _('Schnell')), ('auto', _('Auto')), ('4', _('Scharf')),
+                 ('3', _('Sehr scharf'))]
+        keys = [k for k, _l in modes]
+        segment('thumb', 146, _('Vorschaubild'), modes,
+                keys.index(mode) if mode in keys else -1, 'r.thumb.', ctx.set_thumb_mode)
+
+        # Beispiel: letzter Druck in der gewählten Stufe, dazu die Übertragungszeit
+        last = ctx.last_print or {}
+        fname = last.get('filename') or ''
+        mosaic = ctx.thumb(fname, 164) if fname else None
+        tile = Rect(AREA.x, 240, AREA.w, 228)
+        info = {'6': _('Immer grob (6 px), am schnellsten.'),
+                'auto': _('Feinste Stufe, die schnell genug ist (3, 4 oder 6 px).'),
+                '4': _('Immer 4 px.'),
+                '3': _('Immer 3 px. Schattierte Teile brauchen über 1 s.')}.get(
+                    mode, _('Blockgröße %s px (qbdisplay.cfg)') % mode)
+        if mosaic:
+            n = len(mosaic)
+            secs = thumbs.seconds(mosaic)
+            detail = _('Dieses Bild: %d px, ca. %s s') % (164 // n, i18n.decimal('%.1f' % secs))
+        else:
+            detail = _('Noch kein Vorschaubild vorhanden')
+
+        tx = tile.x + 14 + 164 + 18
+        tw = tile.x2 - 14 - tx
+
+        def paint_ex(c, r):
+            W.tile(c, r)
+            W.caption(c, tx, r.y + 32, _('Beispiel'), 'surface')
+            c.text(tx, r.y + 60, tw, 24, fname or '–', F.TEXT, 'text', 'surface')
+        frame.region('thumb.ex', tile, fname, paint_ex)
+
+        # Bild und Text getrennt: Stufe wechseln zeichnet nur, was sich ändert
+        img = Rect(tile.x + 14, tile.y + 32, 164, 164)
+        frame.region('thumb.img', img, id(mosaic) if mosaic else None,
+                     lambda c, r: paint_thumb(c, r, mosaic), clear='surface', parent='thumb.ex')
+
+        def paint_txt(c, r):
+            y = r.y
+            for line in F.wrap(info, F.CAP, r.w)[:3]:
+                c.text(r.x, y, r.w, 18, line, F.CAP, 'text2', 'surface')
+                y += 20
+            y += 8
+            for line in F.wrap(detail, F.CAP, r.w)[:2]:
+                c.text(r.x, y, r.w, 18, line, F.CAP, 'accent', 'surface')
+                y += 20
+        frame.region('thumb.txt', Rect(tx, tile.y + 96, tw, 112), (info, detail), paint_txt,
+                     clear='surface', parent='thumb.ex')
 
     def build_info(self, frame):
         ctx = self.ctx

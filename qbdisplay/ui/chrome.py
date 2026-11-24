@@ -163,7 +163,7 @@ def build_toast(frame, ctx):
     rect = Rect(CONTENT.x + 60, 416, CONTENT.w - 120, 48)
 
     def paint(c, r):
-        border = {'err': 'err', 'ok': 'ok', 'info': 'info'}.get(kind, 'accent')
+        border = {'err': 'err', 'ok': 'ok', 'info': 'info', 'warn': 'warn'}.get(kind, 'accent')
         W.glow_box(c, r, 14, 'surface2', border, 'bg', halo=2, bw=1, inner=False)
         c.text(r.x + 16, r.y + 14, r.w - 32, 20, text, F.TEXT, 'text', 'surface2', 'center')
     frame.region('toast', rect, (text, kind), paint, clear='bg', opaque=True)

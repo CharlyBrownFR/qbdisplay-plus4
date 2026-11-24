@@ -17,6 +17,13 @@ wird nur QIDIs Display-Programm. Der Rückweg zur QIDI-Oberfläche ist ein Befeh
 - Bewegen, Dateien, Lüfter, Licht, Netzwerk-Status („Nur LAN“)
 - **WLAN einrichten** am Display (ab 0.5): Netz wählen, Passwort über die Bildschirmtastatur.
   Das neue Netz wird erst ausprobiert und nur gespeichert, wenn es klappt – sonst bleibt das alte
+  WLAN aktiv.
+- **Notbewegung** (ab 0.6): Bett/Kopf ohne Referenzfahrt freifahren, z. B. wenn die Düse nach
+  einem abgebrochenen Druck im Teil steckt (kleine Schritte, danach gehen die Motoren aus).
+- **Vorschaubild einstellbar** (ab 0.6, System → Anzeige): Schnell, Auto, Scharf oder Sehr scharf.
+  Das Display kann keine Bilder laden, das Vorschaubild ist ein Mosaik aus Farbflächen; feiner
+  heißt mehr Flächen und damit längere Übertragung beim Seitenwechsel. „Auto“ nimmt die feinste
+  Stufe, die noch schnell genug ist.
 - Deutsch und Englisch
 - Startbild beim Einschalten, startet automatisch
 
@@ -95,6 +102,12 @@ program is swapped. Going back to the QIDI UI is one command.
 - Move, files, fans, light, network status ("LAN only")
 - **Wi-Fi setup** on the display (from 0.5): pick a network, enter the password on the on-screen
   keyboard. The new network is tried first and only saved if it works – otherwise the old one stays
+  active.
+- **Free move** (from 0.6): move the bed/head without homing first, e.g. to free the nozzle
+  after a failed print (small steps only; the motors are turned off afterwards).
+- **Adjustable preview image** (from 0.6, System → Display): Fast, Auto, Sharp or Sharpest. The
+  display cannot load pictures, so the preview is a mosaic of colour blocks; finer means more blocks
+  and a longer transfer when the page changes. "Auto" picks the finest level that is still fast.
 - English and German
 - Boot screen, starts automatically
 

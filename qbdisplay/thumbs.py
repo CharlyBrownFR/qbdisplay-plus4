@@ -141,7 +141,60 @@ def pick_thumbnail(metadata, min_size=24):
     return thumbs[-1]
 
 
-def load_mosaic(gcode_dir, filename, metadata, n):
+# Stufen (System > Anzeige): feste Blockgröße in Pixel oder 'auto'
+MODES = ('6', 'auto', '4', '3')
+AUTO_BLOCKS = (3, 4, 6)          # feinste zuerst
+AUTO_BUDGET = 0.6                # s Übertragung für das Bild (115200 Baud)
+BAUD = 115200
+BYTES_PER_FILL = 25              # 'fill x,y,w,h,farbe' + Endbytes, gemessen ~24
+
+
+def norm_mode(value):
+    """'auto' oder Blockgröße 2..12 als Text; Unbekanntes -> 'auto'."""
+    v = str(value or '').strip().lower()
+    if v == 'auto':
+        return 'auto'
+    try:
+        b = int(v)
+    except ValueError:
+        return 'auto'
+    return str(max(2, min(12, b)))
+
+
+def fills(m):
+    """Anzahl Füllflächen (Lauflängen je Zeile, ohne leere Felder)."""
+    n = 0
+    for row in m or ():
+        prev = object()
+        for col in row:
+            if col != prev and col:
+                n += 1
+            prev = col
+    return n
+
+
+def seconds(m):
+    """Geschätzte Übertragungszeit des Mosaiks."""
+    return fills(m) * BYTES_PER_FILL * 10.0 / BAUD
+
+
+def blocks_for(mode):
+    return AUTO_BLOCKS if mode == 'auto' else (int(mode),)
+
+
+def choose(px, w, h, size, mode):
+    """Mosaik für ``size`` Pixel in der Stufe ``mode``. 'auto': die feinste Stufe,
+    die unter AUTO_BUDGET bleibt (sonst die gröbste)."""
+    m = None
+    for block in blocks_for(mode):
+        m = mosaic(px, w, h, max(4, size // block))
+        if mode != 'auto' or seconds(m) <= AUTO_BUDGET:
+            return m
+    return m
+
+
+def load_mosaic(gcode_dir, filename, metadata, size, mode='auto'):
+    n = max(4, size // min(blocks_for(mode)))
     t = pick_thumbnail(metadata, n)
     if t is None:
         return None
@@ -149,4 +202,4 @@ def load_mosaic(gcode_dir, filename, metadata, n):
                         t['relative_path'])
     with open(path, 'rb') as f:
         w, h, px = decode_png(f.read())
-    return mosaic(px, w, h, n)
+    return choose(px, w, h, size, mode)

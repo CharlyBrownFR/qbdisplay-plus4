@@ -170,7 +170,8 @@ class HomePage(Page):
                     c.text(cx - 4, cy - 10, r.x2 - cx - 10, 20, ' + '.join(tools), F.CAP,
                            'text3', 'surface')
         frame.region('last', tile, (fname, layers, tuple(fcolors), tuple(tools),
-                                    last.get('status'), mosaic is not None), paint_last)
+                                    last.get('status'), id(mosaic) if mosaic else None),
+                     paint_last)
         if fname:
             br = Rect(tile.x + 14, tile.y2 - 14 - 64, tile.w - 28 - 72, 64)
             pressed = ctx.pressed == 'reprint'
@@ -273,7 +274,8 @@ class HomePage(Page):
         def paint_top(c, r):
             W.tile(c, r, glow=live)
             paint_thumb(c, Rect(r.x + 12, r.y + 12, 128, 128), mosaic)
-        frame.region('ptop', top, (pv.filename, mosaic is not None, live), paint_top)
+        frame.region('ptop', top, (pv.filename, id(mosaic) if mosaic else None, live),
+                     paint_top)
         x0 = top.x + 12 + 128 + 18
         w0 = top.x2 - 18 - x0
         pct = int(pv.progress * 100)

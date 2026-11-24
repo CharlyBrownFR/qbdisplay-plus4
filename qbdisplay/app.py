@@ -44,6 +44,8 @@ from .ui.wifi import WifiPage, PasswordDialog
 
 log = logging.getLogger(__name__)
 
+FREE_TIMEOUT = 300       # Notbewegung endet nach so vielen Sekunden ohne Eingabe
+
 PAGES = {
     'home': HomePage, 'filament': BoxPage, 'slot_edit': SlotEditPage, 'drying': DryingPage,
     'move': MovePage, 'files': FilesPage, 'system': SystemPage, 'wifi': WifiPage,
@@ -60,7 +62,7 @@ def subscribe_objects(cfg):
         'display_status': ['progress', 'message'],
         'pause_resume': ['is_paused'],
         'idle_timeout': ['state'],
-        'toolhead': ['position', 'homed_axes'],
+        'toolhead': ['position', 'homed_axes', 'axis_minimum', 'axis_maximum'],
         'gcode_move': ['gcode_position', 'speed_factor', 'extrude_factor', 'homing_origin'],
         'extruder': ['temperature', 'target', 'can_extrude'],
         'heater_bed': ['temperature', 'target'],
@@ -117,6 +119,8 @@ class App(object):
         self._toast = None
         self.frame = Frame()
         self.net = {}
+        self.free_move = False   # Notbewegung: Position nur angenommen (SET_KINEMATIC_POSITION)
+        self._free_last = self._free_since = 0.0
         self.wifi = {}      # WLAN-Seite: state, nets, error, page, current, connecting
         self.files = []
         self.last_print = None
@@ -134,7 +138,9 @@ class App(object):
         self._asleep = False
         self._minute = None
         self.thumbs_enabled = cfg.getbool('display', 'thumbnails')
-        self.thumb_block = max(2, cfg.getint('display', 'thumb_block'))
+        # Vorschaubild-Stufe: System > Anzeige (Zustandsdatei), sonst qbdisplay.cfg
+        self.thumb_mode = thumbs.norm_mode(model.read_state(self.state_file).get('thumb_mode')
+                                           or cfg.get('display', 'thumb_block'))
 
     # ==================================================================
     # Kontext für Seiten
@@ -218,24 +224,28 @@ class App(object):
     def thumb(self, filename, size):
         if not self.thumbs_enabled or not filename:
             return None
-        n = max(4, size // self.thumb_block)
-        key = (filename, n)
+        key = (filename, size, self.thumb_mode)
         if key in self._thumbs:
             return self._thumbs[key]
+        # bis die neue Stufe gerechnet ist: vorhandenes Bild derselben Datei zeigen
+        # (statt kurz den Platzhalter -> nur ein Neuzeichnen)
+        old = next((m for k, m in self._thumbs.items()
+                    if k[0] == filename and k[1] == size and m), None)
         meta = self._meta.get(filename)
         if meta is None:
             self.request_meta(filename)
-            return None
+            return old
         if key not in self._thumb_pending:
             self._thumb_pending.add(key)
             t = threading.Thread(target=self._load_thumb, args=(key, meta), name='thumb')
             t.daemon = True
             t.start()
-        return None
+        return old
 
     def _load_thumb(self, key, meta):
         try:
-            m = thumbs.load_mosaic(self.cfg.get('printer', 'gcode_dir'), key[0], meta, key[1])
+            m = thumbs.load_mosaic(self.cfg.get('printer', 'gcode_dir'), key[0], meta, key[1],
+                                   key[2])
         except Exception as e:   # noqa: defektes/fehlendes Bild -> Platzhalter
             log.info('Vorschaubild %s: %s', key[0], e)
             m = None
@@ -286,6 +296,8 @@ class App(object):
             self.ui.pop('dry', None)
         if name == 'files':
             self.refresh_files()
+        if self.free_move and name != 'move':
+            self.end_free_move()
         self.ui.update(ui)
         self.page_name = name
         self.page().on_show()
@@ -338,6 +350,17 @@ class App(object):
         self._toast = None
         self.redraw()
         return code
+
+    def set_thumb_mode(self, mode):
+        """Vorschaubild-Stufe (System › Anzeige): sofort neu zeichnen und merken."""
+        mode = thumbs.norm_mode(mode)
+        if mode == self.thumb_mode:
+            return
+        self.thumb_mode = mode
+        log.info('Vorschaubild: %s', mode)
+        model.write_state(self.state_file, 'thumb_mode', mode)
+        # kein ganzes Neuzeichnen: Regionen mit dem Bild haben die Stufe im Schlüssel
+        self.mark_dirty()
 
     # ==================================================================
     # Befehle an Klipper
@@ -617,13 +640,84 @@ class App(object):
     # --- Bewegen -----------------------------------------------------------------
     def jog(self, axis, dist):
         feed = 600 if axis == 'Z' else 6000
+        if self.free_move:
+            dist = max(-model.FREE_STEP, min(model.FREE_STEP, dist))
+            self._free_last = self.now
         self.gcode('G91\nG1 %s%.3f F%d\nG90' % (axis, dist, feed))
 
     def home(self, axes):
+        if self.free_move:      # Referenzfahrt von angenommener Position aus: nein
+            return
         self.gcode(('G28 ' + axes).strip(), _('Referenzfahrt ...'))
 
     def motors_off(self):
+        if self.free_move:
+            self.end_free_move()
+            return
         self.gcode('M84', _('Motoren aus'))
+
+    # Notbewegung: ohne Referenzfahrt freifahren (z. B. Düse steckt im Druckteil).
+    # Klipper bewegt erst, wenn die Achsen referenziert sind; SET_KINEMATIC_POSITION
+    # ([force_move] ist beim Plus4 aktiv) setzt für die nicht referenzierten Achsen die
+    # Mitte als angenommene Position. Danach nur kleine Schritte; zum Schluss M84, damit
+    # der Drucker wieder als nicht referenziert gilt.
+    def can_free_move(self):
+        homed = self.st.get('toolhead', 'homed_axes', '') or ''
+        return (not self.free_move and self._motion_allowed()
+                and not all(a in homed for a in 'xyz'))
+
+    def _motion_allowed(self):
+        # auch nach abgebrochenem Druck (print_stats 'error'), aber nicht bei Klipper-Fehler
+        return (self.connected and self.st.get('webhooks', 'state', 'ready') == 'ready'
+                and self.pstate in ('idle', 'error'))
+
+    def confirm_free_move(self):
+        if not self.can_free_move():
+            return
+        self.confirm(_('Ohne Referenzfahrt bewegen?'),
+                     _('Endschalter und Grenzen schützen dabei nicht. Nur kleine Schritte '
+                       '(max. %d mm) und den Drucker im Blick behalten. Fertig schaltet '
+                       'die Motoren aus.')
+                     % model.FREE_STEP, _('Freigeben'), self.start_free_move)
+
+    def start_free_move(self):
+        if not self.can_free_move():
+            return
+        homed = self.st.get('toolhead', 'homed_axes', '') or ''
+        lo = self.st.get('toolhead', 'axis_minimum') or [0, 0, 0]
+        hi = self.st.get('toolhead', 'axis_maximum') or [300, 300, 280]
+        parts = []
+        for i, a in enumerate('xyz'):
+            if a not in homed:
+                parts.append('%s=%.1f' % (a.upper(), (lo[i] + hi[i]) / 2.0))
+
+        def ok():
+            self.free_move = True
+            self._free_last = self._free_since = self.now
+            if self.ui.get('step', 10.0) > model.FREE_STEP:
+                self.ui['step'] = float(model.FREE_STEP)
+            self.notify(_('Notbewegung frei – Grenzen gelten nicht'), 'warn', 5.0)
+        self.gcode('SET_KINEMATIC_POSITION ' + ' '.join(parts), on_done=ok)
+
+    def end_free_move(self, label=None):
+        if not self.free_move:
+            return
+        self.free_move = False
+        self.mark_dirty()
+        self.gcode('M84', label or _('Notbewegung beendet – Motoren aus'))
+
+    def _check_free_move(self):
+        if not self.free_move:
+            return
+        homed = self.st.get('toolhead', 'homed_axes', '') or ''
+        # (homed_axes erst prüfen, wenn der Status nach dem Freigeben angekommen ist)
+        if not self._motion_allowed() or (not homed and self.now - self._free_since > 5):
+            # Druck gestartet, Motoren anderweitig aus, Verbindung weg: nichts mehr senden
+            self.free_move = False
+            self.mark_dirty()
+        elif self.now - self._free_last > FREE_TIMEOUT:
+            self.end_free_move(_('Notbewegung nach %d min ohne Eingabe beendet')
+                               % (FREE_TIMEOUT // 60))
 
     def extrude(self, dist):
         self.gcode('M83\nG1 E%.1f F300' % dist)
@@ -1232,6 +1326,7 @@ class App(object):
             self._cache.clear()
             self._minute = minute
             self.mark_dirty()
+        self._check_free_move()
         if self._toast and self._toast[2] < now:
             self._toast = None
             self.mark_dirty()

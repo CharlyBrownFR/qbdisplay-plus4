@@ -172,7 +172,7 @@ class AppLanguageTest(unittest.TestCase):
 
     def test_switch_in_ui_redraws_and_persists(self):
         app, sink = self.make(lambda a: a.go('system', sys_sub='lang'), self.state)
-        self.assertIn('Sprache', texts(sink))
+        self.assertIn('Anzeige', texts(sink))
         # Trocknungsdaten in derselben Datei dürfen erhalten bleiben
         model.write_state(self.state, 'drying', {'start': 1, 'minutes': 60, 'temp': 50,
                                                  'profile': 'PLA', 'hum_start': None})
@@ -180,9 +180,9 @@ class AppLanguageTest(unittest.TestCase):
         self.tap(app, 'r.lang.en')
         self.assertEqual(i18n.get_language(), 'en')
         drawn = texts(sink)
-        self.assertIn('Language', drawn)            # Menü links neu gezeichnet
+        self.assertIn('Display', drawn)             # Menü links neu gezeichnet
         self.assertIn('HOME', drawn)                # Navigation neu gezeichnet
-        self.assertNotIn('Sprache', drawn)
+        self.assertNotIn('Anzeige', drawn)
         with open(self.state, encoding='utf-8') as f:
             data = json.load(f)
         self.assertEqual(data['language'], 'en')

@@ -38,6 +38,8 @@ class MovePage(Page):
         homed = st.get('toolhead', 'homed_axes', '') or ''
 
         enabled = not printing
+        free = ctx.free_move
+        can_free = ctx.can_free_move()
         # Steuerkreuz: runde Scheibe, durch Diagonalen in vier Felder geteilt,
         # in der Mitte "Home XY". Daneben eine Kapsel für Z.
         pcx, pcy, prad = PAD_C[0], PAD_C[1], PAD_R
@@ -57,6 +59,7 @@ class MovePage(Page):
 
         def jog(tid, rect, icon, label, small, action, home=False):
             pr = ctx.pressed == tid
+            enabled = not printing and not (home and free)
 
             def paint(c, r):
                 face = 'surface'
@@ -75,7 +78,8 @@ class MovePage(Page):
                 ih = 28
                 total = ih + (24 if label else 0) + 18
                 y = r.y + (r.h - total) // 2
-                c.icon(icon, r.cx - 14, y, 28, fg, face)
+                if enabled or not home:     # gesperrtes Home: kein Icon (keine Farbvariante)
+                    c.icon(icon, r.cx - 14, y, 28, fg, face)
                 y += ih + 2
                 if label:
                     c.text(r.x + 2, y, r.w - 4, 24, label, F.BTN, fg, face, 'center')
@@ -108,20 +112,24 @@ class MovePage(Page):
 
         # Position
         pos = st.get('gcode_move', 'gcode_position') or st.get('toolhead', 'position') or [0, 0, 0]
-        ref = all(a in homed for a in 'xyz')
-        ptxt = ('%.1f' % pos[0], '%.1f' % pos[1], '%.2f' % pos[2]) if len(pos) >= 3 else ('', '', '')
+        ref = all(a in homed for a in 'xyz') and not free
+        ptxt = (('%.1f' % pos[0], '%.1f' % pos[1],
+                 ('%.2f' if abs(pos[2]) < 100 else '%.1f') % pos[2]) if len(pos) >= 3
+                else ('', '', ''))
         pr_ = Rect(492, 52, 292, 92)
 
         def paint_pos(c, r):
             W.tile(c, r)
             W.header(c, r, 'target', _('Position'), x=r.x + 14, y=r.y + 12)
-            if ref:
+            if free:
+                W.chip(c, r.x2 - 14, r.y + 12, _('Notbewegung'), 'warn', 'surface', right=True)
+            elif ref:
                 W.chip(c, r.x2 - 14, r.y + 12, _('referenziert'), 'ready', 'surface', icon='check',
                        right=True)
             else:
                 W.chip(c, r.x2 - 14, r.y + 12, _('nicht referenziert'), 'warn', 'surface',
                        right=True)
-        frame.region('pos', pr_, ref, paint_pos)
+        frame.region('pos', pr_, (ref, free), paint_pos)
 
         def paint_xyz(c, r):
             cw = r.w // 3
@@ -132,9 +140,23 @@ class MovePage(Page):
                 x2 = c.label(x, r.y + 2, ax, F.LBL, 'accent', 'surface', h=32)
                 c.label(x2 + 4, r.y, val, F.VAL, 'text', 'surface',
                         max_w=cw - (x2 + 4 - x) - 8)
-        # nur die Zahlen neu zeichnen, nicht die ganze Kachel
-        frame.region('pos.v', Rect(pr_.x + 14, pr_.y + 50, pr_.w - 28, 34), ptxt, paint_xyz,
-                     clear='surface', gaps=True)
+        vr = Rect(pr_.x + 14, pr_.y + 50, pr_.w - 28, 34)
+        if can_free:
+            # nicht referenziert: Zahlen wären bedeutungslos -> Einstieg in die Notbewegung
+            fpr = ctx.pressed == 'freemove'
+
+            def paint_free(c, r):
+                fg = 'text' if fpr else 'accent'
+                x2 = c.label(r.x, r.y + 2, _('Ohne Referenzfahrt bewegen'), F.LBL, fg,
+                             'surface', h=30)
+                cx, cy = x2 + 10, r.y + 17
+                c.thick_line(cx, cy - 6, cx + 6, cy, 2, fg)
+                c.thick_line(cx + 6, cy, cx, cy + 6, 2, fg)
+            frame.region('pos.v', vr, ('free', fpr), paint_free, clear='surface')
+            frame.target('freemove', pr_, ctx.confirm_free_move)
+        else:
+            # nur die Zahlen neu zeichnen, nicht die ganze Kachel
+            frame.region('pos.v', vr, ptxt, paint_xyz, clear='surface', gaps=True)
 
         def paint_cap(c, r):
             c.fill_rect(r, 'bg')
@@ -148,20 +170,26 @@ class MovePage(Page):
         frame.region('seg', seg_r, sel, paint_seg)
         sw = (seg_r.w - 8 - 12) / 4.0
         for i, v in enumerate(STEPS):
+            if free and v > model.FREE_STEP:
+                act = (lambda: ctx.notify(_('Bei der Notbewegung höchstens %d mm')
+                                          % model.FREE_STEP, 'warn'))
+            else:
+                act = (lambda v=v: ctx.set_ui(step=v))
             frame.target('step.%d' % i, Rect(seg_r.x + 4 + i * (sw + 4), seg_r.y, sw, seg_r.h),
-                         (lambda v=v: ctx.set_ui(step=v)))
+                         act)
 
         for i, (tid, label, icon, act) in enumerate((
                 ('homeall', _('Alle Achsen'), 'home', lambda: ctx.home('')),
+                ('done', _('Fertig'), 'check', ctx.end_free_move) if free else
                 ('motoff', _('Motoren aus'), 'power', ctx.motors_off))):
             rr = Rect(492 + i * 150, 264, 142, 56)
             pr = ctx.pressed == tid
-            en = not printing
+            en = not printing and not (free and tid == 'homeall')
+            kind = 'primary' if tid == 'done' else ('secondary' if en else 'disabled')
 
-            def paint_b(c, r, label=label, icon=icon, pr=pr, en=en):
-                W.button(c, r, label, 'secondary' if en else 'disabled', icon if en else None,
-                         'bg', fid=F.LBL, pressed=pr)
-            frame.region('b.' + tid, rr, (label, pr, en), paint_b)
+            def paint_b(c, r, label=label, icon=icon, pr=pr, en=en, kind=kind):
+                W.button(c, r, label, kind, icon if en else None, 'bg', fid=F.LBL, pressed=pr)
+            frame.region('b.%d' % i, rr, (label, pr, en), paint_b)
             if en:
                 frame.target(tid, rr, act)
 
