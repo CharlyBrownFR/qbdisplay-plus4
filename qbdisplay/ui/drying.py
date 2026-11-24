@@ -291,4 +291,4 @@ class DryingPage(Page):
                        'ready' if delta < 0 else 'warn', 'surface',
                        icon='down' if delta < 0 else 'up', right=True)
         frame.region('h.d', Rect(h_rect.x2 - 16 - 96, h_rect.y + 96, 96, 32), delta, paint_hd,
-                     clear='surface')
+                     clear='surface', gaps=True)

@@ -13,6 +13,8 @@ Konvention: ``under`` ist die Farbe *unter* dem Baustein (für Ecken,
 Text-Hintergrund und eingefärbte Icons).
 """
 
+import re
+
 from .. import colors
 from .. import fonts as F
 from ..canvas import Rect
@@ -212,16 +214,37 @@ PILL_COLORS = {'ok': ('ok_bg', 'ok'), 'run': ('run_bg', 'accent'), 'err': ('err_
                'warn': ('warn_bg', 'warn'), 'info': ('info_bg', 'info')}
 
 
-def pill_state(c, x, y, text, kind, under='bar'):
-    """Zustandspille der Statusleiste (leuchtender Punkt + Großbuchstaben)."""
+def pill_width(text):
+    """Breite der Zustandspille. Ziffern zählen alle so breit wie die breiteste,
+    damit die Pille bei "14 %" -> "15 %" nicht die Form wechselt: dann wird nur
+    ihr Text neu geschrieben (siehe :func:`pill_text_rect`)."""
+    widest = max('0123456789', key=lambda d: F.measure(d, F.CAP))
+    return F.measure(re.sub('[0-9]', widest, caps(text)), F.CAP) + 36
+
+
+def pill_shape(c, x, y, w, kind):
+    """Zustandspille ohne Text: Fläche und leuchtender Punkt."""
     bg, fg = PILL_COLORS[kind]
-    text = caps(text)
-    w = F.measure(text, F.CAP) + 36
     c.rr(Rect(x, y, w, 26), 13, bg)
     c.disc(x + 14, y + 13, 6, colors.mix(bg, fg, 0.35))
     c.disc(x + 14, y + 13, 4, fg)
-    c.text(x + 25, y + 13 - F.height(F.CAP) // 2, w - 30, F.height(F.CAP), text, F.CAP, fg, bg,
-           ellipsis=False)
+
+
+def pill_text_rect(x, y, w):
+    return Rect(x + 25, y + 13 - F.height(F.CAP) // 2, w - 30, F.height(F.CAP))
+
+
+def pill_text(c, x, y, w, text, kind):
+    bg, fg = PILL_COLORS[kind]
+    r = pill_text_rect(x, y, w)
+    c.text(r.x, r.y, r.w, r.h, caps(text), F.CAP, fg, bg, ellipsis=False)
+
+
+def pill_state(c, x, y, text, kind, under='bar'):
+    """Zustandspille der Statusleiste (leuchtender Punkt + Großbuchstaben)."""
+    w = pill_width(text)
+    pill_shape(c, x, y, w, kind)
+    pill_text(c, x, y, w, text, kind)
     return w
 
 

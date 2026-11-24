@@ -118,6 +118,55 @@ def uncovered(r, rects):
     return out
 
 
+class Op(object):
+    """Ein aufgezeichneter Zeichenbefehl (siehe :meth:`Canvas.record_start`).
+    ``cover``: Fläche, die er sicher deckend übermalt; ``color``: seine Farbe
+    (RGB565) bei einfarbigen Formen, ``None`` bei Text und Bildern; ``disc``:
+    (cx, cy, r) bei gefüllten Kreisen; ``box``: alles, worauf er zeichnet."""
+    __slots__ = ('cmd', 'kind', 'cover', 'color', 'disc', 'box')
+
+    def __init__(self, cmd, kind, cover=None, color=None, disc=None, box=None):
+        self.cmd = cmd
+        self.kind = kind
+        self.cover = cover
+        self.color = color
+        self.disc = disc
+        self.box = box if box is not None else cover
+
+
+def _touches(a, b):
+    return a.x < b.x2 and b.x < a.x2 and a.y < b.y2 and b.y < a.y2
+
+
+def _schedule(gaps, boxes, n):
+    """Ordnet jedes Lückenstück dem ersten Befehl zu, der darauf zeichnet
+    (``boxes``: (Index, Fläche) in Reihenfolge); ``n`` = vor allem anderen.
+    -> {Index: [Rect]}"""
+    out = {}
+    for g in gaps:
+        k = n
+        for i, b in boxes:
+            if _touches(g, b):
+                k = i
+                break
+        out.setdefault(k, []).append(g)
+    return out
+
+
+def disc_cover(cx, cy, r):
+    """Quadrat, das ein gefüllter Kreis sicher ganz übermalt (mit 1 px Reserve
+    für die Rasterung des Displays), oder ``None`` bei kleinen Kreisen."""
+    h = int(r / math.sqrt(2.0)) - 1
+    if h < 1:
+        return None
+    return Rect(int(cx) - h, int(cy) - h, 2 * h + 1, 2 * h + 1)
+
+
+def disc_inside(a, b):
+    """Liegt Kreis ``a`` ganz in Kreis ``b``? (jeweils (cx, cy, r))"""
+    return math.hypot(a[0] - b[0], a[1] - b[1]) + a[2] <= b[2]
+
+
 class Canvas(object):
     """Zeichenprimitive. ``dim`` > 0 mischt alle Farben mit dem Scrim
     (Hintergrund hinter Dialogen) und lässt Bilder weg."""
@@ -131,23 +180,62 @@ class Canvas(object):
         self.missing_icon_cb = missing_icon_cb
         self._warned = set()
         self.count = 0
-        self._track = None
-        self._mute = False
+        self._rec = None
 
-    # -- Abdeckung (für Regionen, die ohne vorheriges Löschen zeichnen) ----
-    def track_start(self, mute=False):
-        """Merkt sich ab jetzt, welche Flächen sicher deckend übermalt werden
-        (fill, Text, Bilder). ``mute``: nur messen, nichts senden."""
-        self._track = []
-        self._mute = mute
+    # -- Aufzeichnen (für Regionen, die ohne vorheriges Löschen zeichnen) --
+    def record_start(self):
+        """Ab jetzt nichts senden, sondern die Befehle als :class:`Op` sammeln."""
+        self._rec = []
 
-    def track_stop(self):
-        rects, self._track, self._mute = self._track or [], None, False
-        return rects
+    def record_stop(self):
+        ops, self._rec = self._rec or [], None
+        return ops
 
-    def _cover(self, x, y, w, h):
-        if self._track is not None and w > 0 and h > 0:
-            self._track.append(Rect(int(x), int(y), int(w), int(h)))
+    def _emit(self, cmd, kind, cover=None, color=None, disc=None, box=None):
+        if self._rec is not None:
+            self._rec.append(Op(cmd, kind, cover, color, disc, box))
+        else:
+            self.raw(cmd)
+
+    def play(self, r, ops, clear):
+        """Sendet aufgezeichnete Befehle so, dass jedes Pixel möglichst nur
+        seine neue Farbe annimmt; das fertige Bild bleibt dasselbe.
+
+        - Ein Kreis, der ganz in einem späteren Kreis liegt, entfällt.
+        - Eine Fläche lässt aus, was ein späterer Befehl ohnehin deckend in
+          anderer Farbe übermalt (die Spur unter dem Fortschritt, die
+          Pillenfläche unter dem neuen Text) – sonst sähe man dort kurz die
+          Zwischenfarbe.
+        - Die Lücken (was nichts deckend übermalt) werden in ``clear``
+          gefüllt, jedes Stück erst direkt vor dem ersten Befehl, der darauf
+          zeichnet (z. B. der Rand eines Kreises): so ist es nur einen Befehl
+          lang zu sehen statt bis zum Ende.
+        """
+        n = len(ops)
+        skip = [op.kind == 'disc' and any(q.disc is not None and disc_inside(op.disc, q.disc)
+                                          for q in ops[i + 1:])
+                for i, op in enumerate(ops)]
+        before = _schedule(uncovered(r, [op.cover for op in ops if op.cover is not None]),
+                           [(i, op.box) for i, op in enumerate(ops)
+                            if not skip[i] and op.box is not None], n)
+        for g in before.get(n, ()):
+            self.fill_rect(g, clear)
+        for i, op in enumerate(ops):
+            for g in before.get(i, ()):
+                self.fill_rect(g, clear)
+            if skip[i]:
+                continue
+            if op.kind != 'fill':
+                self.raw(op.cmd)
+                continue
+            hide = [q.cover for q in ops[i + 1:]
+                    if q.cover is not None and q.color != op.color and _touches(q.cover, op.cover)]
+            parts = uncovered(op.cover, hide) if hide else [op.cover]
+            if len(parts) == 1 and parts[0] == op.cover:
+                self.raw(op.cmd)
+            else:
+                for g in parts:
+                    self.raw('fill %d,%d,%d,%d,%d' % (g.x, g.y, g.w, g.h, op.color))
 
     def fill_gaps(self, r, rects, color):
         """Füllt alles in ``r``, was nicht von ``rects`` bedeckt ist."""
@@ -162,28 +250,28 @@ class Canvas(object):
         return colors.rgb565(c)
 
     def raw(self, cmd):
-        if self._mute:
-            return
         self.count += 1
         self.sink.send(cmd)
 
     # -- Grundformen -------------------------------------------------------
     def clear(self, color):
-        self.raw('cls %d' % self._c(color))
+        c = self._c(color)
+        self._emit('cls %d' % c, 'fill', Rect(0, 0, self.WIDTH, self.HEIGHT), c)
 
     def fill(self, x, y, w, h, color):
         x, y, w, h = int(x), int(y), int(w), int(h)
         if w <= 0 or h <= 0:
             return
-        self._cover(x, y, w, h)
-        self.raw('fill %d,%d,%d,%d,%d' % (x, y, w, h, self._c(color)))
+        c = self._c(color)
+        self._emit('fill %d,%d,%d,%d,%d' % (x, y, w, h, c), 'fill', Rect(x, y, w, h), c)
 
     def fill_rect(self, r, color):
         self.fill(r.x, r.y, r.w, r.h, color)
 
     def line(self, x0, y0, x1, y1, color):
-        self.raw('line %d,%d,%d,%d,%d' % (int(round(x0)), int(round(y0)),
-                                          int(round(x1)), int(round(y1)), self._c(color)))
+        x0, y0, x1, y1 = int(round(x0)), int(round(y0)), int(round(x1)), int(round(y1))
+        self._emit('line %d,%d,%d,%d,%d' % (x0, y0, x1, y1, self._c(color)), 'line',
+                   box=Rect(min(x0, x1), min(y0, y1), abs(x1 - x0) + 1, abs(y1 - y0) + 1))
 
     def thick_line(self, x0, y0, x1, y1, width, color):
         """Linie mit Breite > 1 (parallel versetzte Einzellinien)."""
@@ -200,12 +288,17 @@ class Canvas(object):
     def disc(self, cx, cy, r, color):
         if r <= 0:
             return
-        self.raw('cirs %d,%d,%d,%d' % (int(cx), int(cy), int(r), self._c(color)))
+        c = self._c(color)
+        cx, cy, r = int(cx), int(cy), int(r)
+        self._emit('cirs %d,%d,%d,%d' % (cx, cy, r, c), 'disc', disc_cover(cx, cy, r), c,
+                   (cx, cy, r), Rect(cx - r, cy - r, 2 * r + 1, 2 * r + 1))
 
     def circle(self, cx, cy, r, color):
         if r <= 0:
             return
-        self.raw('cir %d,%d,%d,%d' % (int(cx), int(cy), int(r), self._c(color)))
+        cx, cy, r = int(cx), int(cy), int(r)
+        self._emit('cir %d,%d,%d,%d' % (cx, cy, r, self._c(color)), 'circle',
+                   box=Rect(cx - r, cy - r, 2 * r + 1, 2 * r + 1))
 
     def ring(self, cx, cy, r, width, color, inner):
         """Kreisring: Scheibe in Ringfarbe, innen Scheibe in Füllfarbe."""
@@ -314,10 +407,9 @@ class Canvas(object):
         if w <= 0 or h <= 0:
             return
         s = fonts.ellipsize(text, fid, w) if ellipsis else fonts.sanitize(text)
-        self._cover(x, y, w, h)
-        self.raw('xstr %d,%d,%d,%d,%d,%d,%d,%d,%d,1,"%s"' % (
+        self._emit('xstr %d,%d,%d,%d,%d,%d,%d,%d,%d,1,"%s"' % (
             int(x), int(y), int(w), int(h), fid, self._c(fg), self._c(bg),
-            ALIGN[align], VALIGN[valign], s))
+            ALIGN[align], VALIGN[valign], s), 'text', Rect(int(x), int(y), int(w), int(h)))
         return fonts.measure(s, fid)
 
     def text_in(self, rect, text, fid, fg, bg, align='left', valign='center'):
@@ -357,5 +449,5 @@ class Canvas(object):
                 log.warning('Icon fehlt in der TJC-Datei: %s', key)
             if pid is None:
                 return
-        self._cover(x, y, size, size)
-        self.raw('pic %d,%d,%d' % (int(x), int(y), pid))
+        self._emit('pic %d,%d,%d' % (int(x), int(y), pid), 'pic',
+                   Rect(int(x), int(y), int(size), int(size)))

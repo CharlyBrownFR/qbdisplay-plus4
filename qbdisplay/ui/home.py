@@ -305,8 +305,8 @@ class HomePage(Page):
             def paint_stat(c, r, cap=cap, val=val, extra=extra, i=i):
                 if i:
                     c.fill(r.x - 6, r.y + 4, 1, r.h - 8, 'line')
-                c.text(r.x + (6 if i else 0), r.y, r.w, 18, W.caps(cap), F.CAP, 'text3',
-                       'surface')
+                c.text(r.x + (6 if i else 0), r.y, r.w - (6 if i else 0), 18, W.caps(cap),
+                       F.CAP, 'text3', 'surface')
                 x = c.label(r.x + (6 if i else 0), r.y + 22, val, F.VAL, 'text', 'surface',
                             max_w=r.w - 6)
                 if extra:

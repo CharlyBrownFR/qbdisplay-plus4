@@ -86,6 +86,11 @@ def _overlap(a, b):
     return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
 
 
+def _contains(outer, inner):
+    return (outer.x <= inner.x and outer.y <= inner.y
+            and inner.x + inner.w <= outer.x + outer.w and inner.y + inner.h <= outer.y + outer.h)
+
+
 class Renderer(object):
     def __init__(self, canvas):
         self.canvas = canvas
@@ -135,7 +140,13 @@ class Renderer(object):
                      or any(_overlap(r.rect, d) for d in drawn))
             if not dirty:
                 continue
-            if old is not None and old[1] != r.rect and not full:
+            if (old is not None and old[1] != r.rect and not full
+                    and not any(_contains(d, old[1]) for d in drawn)):
+                # Liegt die alte Fläche in einer Region, die in diesem Durchlauf
+                # schon neu gezeichnet wurde (z. B. der Pillentext in der Pille),
+                # ist sie dort bereits richtig gemalt. Mit der alten Löschfarbe
+                # gefüllt bliebe sonst ein Rest stehen, wenn die Region kleiner
+                # wird ("Druckt · 100 %" -> "9 %").
                 c.fill_rect(old[1], old[2])
             self._paint(r)
             self.prev[r.rid] = (r.key, r.rect, r.clear)
@@ -146,16 +157,16 @@ class Renderer(object):
     def _paint(self, r):
         c = self.canvas
         if r.gaps:
-            # 1) nur messen, was deckend gezeichnet wird, 2) alles andere füllen
-            # (auch unter Kreisen/Linien), 3) zeichnen. Text und Flächen werden so
-            # direkt überschrieben, ohne dass vorher ein leeres Feld zu sehen ist.
-            c.track_start(mute=True)
+            # 1) aufzeichnen, 2) alles, was nichts deckend übermalt, mit ``clear``
+            # füllen, 3) die Befehle senden, ohne Flächen, die ein späterer Befehl
+            # ohnehin übermalt (Canvas.play). Text, Flächen und Kreise werden so
+            # direkt überschrieben, ohne leeres Feld oder Zwischenfarbe.
+            c.record_start()
             try:
                 r.paint(c, r.rect)
             finally:
-                rects = c.track_stop()
-            c.fill_gaps(r.rect, rects, r.clear)
-            r.paint(c, r.rect)
+                ops = c.record_stop()
+            c.play(r.rect, ops, r.clear)
             return
         if not r.opaque:
             c.fill_rect(r.rect, r.clear)
