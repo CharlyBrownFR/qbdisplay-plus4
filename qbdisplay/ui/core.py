@@ -86,6 +86,11 @@ def _overlap(a, b):
     return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
 
 
+def _contains(outer, inner):
+    return (outer.x <= inner.x and outer.y <= inner.y
+            and inner.x + inner.w <= outer.x + outer.w and inner.y + inner.h <= outer.y + outer.h)
+
+
 class Renderer(object):
     def __init__(self, canvas):
         self.canvas = canvas
@@ -135,7 +140,13 @@ class Renderer(object):
                      or any(_overlap(r.rect, d) for d in drawn))
             if not dirty:
                 continue
-            if old is not None and old[1] != r.rect and not full:
+            if (old is not None and old[1] != r.rect and not full
+                    and not any(_contains(d, old[1]) for d in drawn)):
+                # Liegt die alte Fläche in einer Region, die in diesem Durchlauf
+                # schon neu gezeichnet wurde (z. B. der Pillentext in der Pille),
+                # ist sie dort bereits richtig gemalt. Mit der alten Löschfarbe
+                # gefüllt bliebe sonst ein Rest stehen, wenn die Region kleiner
+                # wird ("Druckt · 100 %" -> "9 %").
                 c.fill_rect(old[1], old[2])
             self._paint(r)
             self.prev[r.rid] = (r.key, r.rect, r.clear)

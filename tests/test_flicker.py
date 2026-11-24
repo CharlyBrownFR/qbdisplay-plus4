@@ -236,6 +236,67 @@ class PixelTest(unittest.TestCase):
                         {'virtual_sdcard': {'progress': 0.15}, 'display_status': {'progress': 0.15}})
         self.assertLess(n, 300)
 
+    def steps_vs_full(self, scenario, statuses):
+        """Statusänderungen einzeln zeichnen und mit einem kompletten Neuaufbau
+        des letzten Zustands vergleichen -> Anzahl abweichender Pixel."""
+        from tools import scenarios
+        from qbdisplay.sim import Simulator
+        sim = Simulator()
+        app = scenarios.make_app(sim)
+        scenario(app)
+        app.render()
+        for status in statuses:
+            app.st.update(status)
+            app._status_changed()
+            app.render()
+        full = Simulator()
+        app2 = scenarios.make_app(full)
+        scenario(app2)
+        app2.st.update(statuses[-1])
+        app2._status_changed()
+        app2.render()
+        return _count(_changed(sim.img, full.img))
+
+    def test_status_pill_shrinks_cleanly(self):
+        # 100 % -> 9 %: die Pille wird schmaler; vom alten Pillentext darf
+        # rechts nichts stehen bleiben
+        from tools import scenarios
+
+        def prog(p):
+            return {'virtual_sdcard': {'progress': p}, 'display_status': {'progress': p}}
+        for scenario in (scenarios.s_home_print, scenarios.s_home_print_plain,
+                         scenarios.s_print_no_box):
+            for steps in ((0.05, 1.0, 0.09), (0.05, 0.10, 0.09)):
+                self.assertEqual(self.steps_vs_full(scenario, [prog(p) for p in steps]), 0,
+                                 (scenario.__name__, steps))
+
+    def test_drying_pill_shrinks_cleanly(self):
+        # Restzeit 10:00 -> 9:59 in der Statusleiste: eine Ziffer weniger
+        from tools import scenarios
+        from tools.scenarios import NOW
+        from qbdisplay.sim import Simulator
+
+        def at(app, minutes_left):
+            app.drying_tracker.data = {'start': NOW - (720 - minutes_left) * 60,
+                                       'minutes': 720, 'temp': 55, 'profile': 'PETG',
+                                       'hum_start': 45.0}
+            app._status_changed()
+
+        sim = Simulator()
+        app = scenarios.make_app(sim)
+        scenarios.s_drying_running(app)
+        app.go('home')
+        for m in (601, 600, 599):
+            at(app, m)
+            app.render()
+        full = Simulator()
+        app2 = scenarios.make_app(full)
+        scenarios.s_drying_running(app2)
+        app2.go('home')
+        at(app2, 599)
+        app2.render()
+        self.assertEqual(_count(_changed(sim.img, full.img)), 0)
+
     def test_idle_box_move_dont_blink(self):
         from tools import scenarios
         cases = ((scenarios.s_home_idle, {'extruder': {'temperature': 26.0}}),
