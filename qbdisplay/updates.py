@@ -63,11 +63,13 @@ def parse_ini(text):
     return out
 
 
-def helper(*args, timeout=15):
-    """Hilfsskript über sudo -n; liefert (ok, ausgabe)."""
+def helper(*args, timeout=15, data=None):
+    """Hilfsskript über sudo -n; liefert (ok, ausgabe). ``data`` geht über stdin."""
     try:
         res = subprocess.run(['sudo', '-n', HELPER] + list(args), stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, timeout=timeout)
+                             stderr=subprocess.STDOUT, timeout=timeout,
+                             input=data.encode('utf-8') if data is not None else None,
+                             stdin=subprocess.DEVNULL if data is None else None)
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
     return res.returncode == 0, res.stdout.decode('utf-8', 'replace')

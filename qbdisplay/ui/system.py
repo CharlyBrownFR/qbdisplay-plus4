@@ -111,7 +111,7 @@ class SystemPage(Page):
         def paint_b(c, r):
             W.button(c, r, _('Ändern'), 'secondary', None, 'surface', fid=F.BTN, pressed=pr)
         frame.region('wifi.chg', br, pr, paint_b, clear='surface')
-        frame.target('wifi.chg', br, ctx.wifi_info)
+        frame.target('wifi.chg', br, ctx.open_wifi)
 
         svc = Rect(AREA.x, 324, AREA.w, 144)
         services = net.get('services') or []

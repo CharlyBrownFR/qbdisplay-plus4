@@ -15,6 +15,8 @@ wird nur QIDIs Display-Programm. Der Rückweg zur QIDI-Oberfläche ist ein Befeh
   an- oder abstecken wird erkannt. Mehrere Boxen (bis 4) lassen sich durchblättern
 - **Box-Trocknung** mit Profilen, Restzeit und Feuchte-Bewertung je Material
 - Bewegen, Dateien, Lüfter, Licht, Netzwerk-Status („Nur LAN“)
+- **WLAN einrichten** am Display (ab 0.5): Netz wählen, Passwort über die Bildschirmtastatur.
+  Das neue Netz wird erst ausprobiert und nur gespeichert, wenn es klappt – sonst bleibt das alte
 - Deutsch und Englisch
 - Startbild beim Einschalten, startet automatisch
 
@@ -56,6 +58,11 @@ Spielt die gesicherte QIDI-Display-Datei wieder auf (ca. 7 min) und startet QIDI
 - **Von 0.3.x oder älter** einmal von Hand aktualisieren: neues Paket entpacken, den alten Ordner
   beiseitelegen (`mv qbdisplay qbdisplay-alt`), neuen Ordner in `qbdisplay` umbenennen,
   `./install.sh` ausführen. Danach geht es am Display.
+- **Von 0.4.x auf 0.5** ebenso einmal von Hand (0.5 bringt ein neues Hilfsskript mit Root-Rechten
+  für das WLAN; das ersetzt das Update am Display aus Sicherheitsgründen nie selbst). Die
+  Display-Datei ist unverändert, `install.sh` spielt sie dann nicht neu auf.
+- **WLAN:** Der eingebaute Stick kann nur 2,4 GHz und WPA/WPA2 mit Passwort (kein reines WPA3,
+  kein Firmen-WLAN).
 - **QIDI-Updates** laufen über QIDIs Oberfläche: „Zu QIDI“ wechselt direkt am Display zurück
   (ca. 7 min), dann wie gewohnt updaten, danach wieder `./install.sh`.
 - **QIDI-Cloud/App:** entfallen mit qbdisplay (QIDI Studio im LAN funktioniert weiter).
@@ -86,6 +93,8 @@ program is swapped. Going back to the QIDI UI is one command.
   the box in or out while running is detected. Several boxes (up to 4) can be paged through
 - **Box drying** with profiles, time left and humidity rating per material
 - Move, files, fans, light, network status ("LAN only")
+- **Wi-Fi setup** on the display (from 0.5): pick a network, enter the password on the on-screen
+  keyboard. The new network is tried first and only saved if it works – otherwise the old one stays
 - English and German
 - Boot screen, starts automatically
 
@@ -127,6 +136,11 @@ cd ~/qbdisplay && ./uninstall.sh
 - **From 0.3.x or older** update once by hand: extract the new package, move the old folder aside
   (`mv qbdisplay qbdisplay-old`), rename the new folder to `qbdisplay`, run `./install.sh`. After
   that, updates work from the display.
+- **From 0.4.x to 0.5** also once by hand (0.5 brings a new root helper script for Wi-Fi; for
+  security the display update never replaces it by itself). The display file is unchanged, so
+  `install.sh` does not flash it again.
+- **Wi-Fi:** the built-in stick only does 2.4 GHz and WPA/WPA2 with a password (no WPA3-only, no
+  enterprise Wi-Fi).
 - **QIDI updates** run through QIDI's UI: "To QIDI" switches back right on the display (about
   7 min), update as usual, then run `./install.sh` again.
 - **QIDI cloud/app** are not available with qbdisplay (QIDI Studio on the LAN keeps working).

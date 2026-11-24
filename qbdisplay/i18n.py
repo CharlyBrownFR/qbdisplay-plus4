@@ -454,11 +454,59 @@ EN = {
         'cloud parts (frpc, mqtt) is not set up - see README.md.',
     'Wird umgeschaltet ...': 'Switching ...',
     'Fehler: %s': 'Error: %s',
-    'WLAN ändern': 'Change Wi-Fi',
-    'Das WLAN wird über die Weboberfläche oder per SSH (nmtui) eingerichtet. Am Display '
-    'folgt das später.':
-        'Set up Wi-Fi via the web UI or SSH (nmtui). Setup on the display will follow '
-        'later.',
+    # WLAN
+    'WLAN': 'Wi-Fi',
+    'WLAN-Passwort': 'Wi-Fi password',
+    'Passwort': 'Password',
+    'Offen, ohne Passwort': 'Open, no password',
+    'WEP - veraltet, nicht unterstützt': 'WEP - outdated, not supported',
+    'Nur WPA3 - vom WLAN-Stick nicht unterstützt': 'WPA3 only - not supported by the stick',
+    'Firmen-WLAN - nicht unterstützt': 'Enterprise Wi-Fi - not supported',
+    'Verbinde mit %s ...': 'Connecting to %s ...',
+    'Dauert bis zu 1 min': 'Takes up to 1 min',
+    'Verbunden mit %s': 'Connected to %s',
+    'WLAN verbunden': 'Wi-Fi connected',
+    'Über Kabel verbunden': 'Connected by cable',
+    'Zurück': 'Back',
+    'Hilfsskript veraltet': 'Helper script outdated',
+    'Bitte einmal ./install.sh von Hand ausführen (wie bei der Installation), danach geht '
+    'WLAN am Display.':
+        'Please run ./install.sh by hand once (as during installation); then Wi-Fi works '
+        'on the display.',
+    'Suche Netze ...': 'Searching networks ...',
+    'Dauert ein paar Sekunden.': 'Takes a few seconds.',
+    'Suche fehlgeschlagen': 'Search failed',
+    'Bitte später erneut versuchen.': 'Please try again later.',
+    'Keine Netze gefunden': 'No networks found',
+    'Der WLAN-Stick empfängt nur 2,4 GHz.': 'The Wi-Fi stick only receives 2.4 GHz.',
+    'Weitere Netze (Seite %d von %d)': 'More networks (page %d of %d)',
+    'verbunden': 'connected',
+    'noch %d Zeichen': '%d more chars',
+    'Zeigen': 'Show',
+    'Verbergen': 'Hide',
+    'Verbinden': 'Connect',
+    'Mit %s verbinden?': 'Connect to %s?',
+    'Offenes WLAN ohne Passwort - jeder in Reichweite kann mitlesen.':
+        'Open Wi-Fi without password - anyone in range can listen in.',
+    'Dieses WLAN wird nicht unterstützt': 'This Wi-Fi is not supported',
+    'Verbunden mit %s - IP %s': 'Connected to %s - IP %s',
+    'WLAN nicht gespeichert': 'Wi-Fi not saved',
+    'Die Verbindung steht, ließ sich aber nicht dauerhaft speichern. Nach einem Neustart '
+    'gilt wieder das alte WLAN.':
+        'Connected, but it could not be saved. After a restart the old Wi-Fi is used '
+        'again.',
+    'Das Passwort stimmt vermutlich nicht.': 'The password is probably wrong.',
+    'Das Netz war nicht erreichbar.': 'The network could not be reached.',
+    'Verbunden, aber keine IP-Adresse bekommen (Router/DHCP prüfen).':
+        'Connected, but got no IP address (check router/DHCP).',
+    'Während eines Drucks nicht möglich.': 'Not possible while printing.',
+    'Name oder Passwort ungültig (Passwort: 8 bis 63 Zeichen).':
+        'Name or password invalid (password: 8 to 63 characters).',
+    'Hilfsskript veraltet: bitte einmal ./install.sh von Hand ausführen.':
+        'Helper script outdated: please run ./install.sh by hand once.',
+    'Unbekannter Fehler.': 'Unknown error.',
+    'Keine Verbindung mit %s': 'Could not connect to %s',
+    'Das bisherige WLAN bleibt aktiv.': 'The previous Wi-Fi stays active.',
     'Klipper gestoppt': 'Klipper stopped',
     'Druckersoftware angehalten': 'Printer software halted',
     'Ursache beheben (z. B. Sensor, Kabel).': 'Fix the cause (e.g. sensor, cable).',

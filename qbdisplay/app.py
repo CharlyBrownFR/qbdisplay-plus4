@@ -27,6 +27,7 @@ from . import model
 from . import netinfo
 from . import qidi
 from . import updates
+from . import wifi
 from . import thumbs
 from .canvas import Canvas
 from .i18n import _
@@ -39,12 +40,13 @@ from .ui.filament import BoxPage, SlotEditPage
 from .ui.home import HomePage
 from .ui.move import MovePage
 from .ui.system import SystemPage
+from .ui.wifi import WifiPage, PasswordDialog
 
 log = logging.getLogger(__name__)
 
 PAGES = {
     'home': HomePage, 'filament': BoxPage, 'slot_edit': SlotEditPage, 'drying': DryingPage,
-    'move': MovePage, 'files': FilesPage, 'system': SystemPage,
+    'move': MovePage, 'files': FilesPage, 'system': SystemPage, 'wifi': WifiPage,
 }
 
 
@@ -115,6 +117,7 @@ class App(object):
         self._toast = None
         self.frame = Frame()
         self.net = {}
+        self.wifi = {}      # WLAN-Seite: state, nets, error, page, current, connecting
         self.files = []
         self.last_print = None
         self.current_meta = None
@@ -668,9 +671,99 @@ class App(object):
             self.notify(_('Fehler: %s') % e, 'err')
         self._last_net = 0
 
-    def wifi_info(self):
-        self.info(_('WLAN ändern'), _('Das WLAN wird über die Weboberfläche oder per SSH '
-                                      '(nmtui) eingerichtet. Am Display folgt das später.'))
+    # --- WLAN -------------------------------------------------------------
+    def open_wifi(self):
+        self.wifi['page'] = 0
+        self.go('wifi')
+        self.wifi_scan()
+
+    def wifi_set(self, **kw):
+        self.wifi.update(kw)
+        self.mark_dirty()
+
+    def wifi_scan(self):
+        if self.wifi.get('state') == 'scanning' or self.wifi.get('connecting'):
+            return
+        self.wifi.update(state='scanning', error=None)
+        self.mark_dirty()
+
+        def run():
+            try:
+                res = wifi.scan()
+            except Exception:   # noqa: nur Anzeige
+                log.exception('WLAN-Suche')
+                res = ([], 'error')
+            self.events.put(('wifi_scan', res))
+        t = threading.Thread(target=run, name='wifi-scan')
+        t.daemon = True
+        t.start()
+
+    def _wifi_scanned(self, res):
+        nets, err = res
+        cur = [n['ssid'] for n in nets if n.get('current')]
+        self.wifi.update(state='done', nets=nets, error=err, page=0)
+        if cur:
+            self.wifi['current'] = cur[0]
+        self.mark_dirty()
+
+    def wifi_pick(self, net):
+        if self.pstate in ('printing', 'paused', 'paused_error'):
+            self.notify(_('Während eines Drucks nicht möglich'), 'warn', 6.0)
+            return
+        kind = net.get('kind')
+        ssid = net.get('ssid', '')
+        if kind == 'psk':
+            self.open_dialog(PasswordDialog(self, ssid))
+        elif kind == 'open':
+            self.confirm(_('Mit %s verbinden?') % ssid,
+                         _('Offenes WLAN ohne Passwort - jeder in Reichweite kann mitlesen.'),
+                         _('Verbinden'), (lambda: self.wifi_connect(ssid, '')), danger=False)
+        else:
+            self.notify(_('Dieses WLAN wird nicht unterstützt'), 'warn', 6.0)
+
+    def wifi_connect(self, ssid, psk):
+        if self.wifi.get('connecting'):
+            return
+        self.wifi['connecting'] = ssid
+        self.mark_dirty()
+
+        def run():
+            try:
+                res = wifi.connect(ssid, psk)
+            except Exception:   # noqa: nur Anzeige; Passwort nicht loggen
+                log.error('WLAN-Verbindung fehlgeschlagen (interner Fehler)')
+                res = {'ok': False, 'reason': 'error'}
+            res['ssid'] = ssid
+            self.events.put(('wifi_connect', res))
+        t = threading.Thread(target=run, name='wifi-connect')
+        t.daemon = True
+        t.start()
+
+    def _wifi_connected(self, res):
+        ssid = res.get('ssid', '')
+        self.wifi['connecting'] = None
+        if res.get('ok'):
+            self.wifi['current'] = ssid
+            self.notify(_('Verbunden mit %s - IP %s') % (ssid, res.get('ip', '')), 'ok', 12.0)
+            if not res.get('saved', True):
+                self.info(_('WLAN nicht gespeichert'),
+                          _('Die Verbindung steht, ließ sich aber nicht dauerhaft speichern. '
+                            'Nach einem Neustart gilt wieder das alte WLAN.'))
+        else:
+            reason = res.get('reason')
+            text = {
+                'auth': _('Das Passwort stimmt vermutlich nicht.'),
+                'notfound': _('Das Netz war nicht erreichbar.'),
+                'dhcp': _('Verbunden, aber keine IP-Adresse bekommen (Router/DHCP prüfen).'),
+                'busy': _('Während eines Drucks nicht möglich.'),
+                'input': _('Name oder Passwort ungültig (Passwort: 8 bis 63 Zeichen).'),
+                'old_helper': _('Hilfsskript veraltet: bitte einmal ./install.sh von Hand '
+                                'ausführen.'),
+            }.get(reason, _('Unbekannter Fehler.'))
+            self.info(_('Keine Verbindung mit %s') % ssid,
+                      text + ' ' + _('Das bisherige WLAN bleibt aktiv.'))
+        self.refresh_net()
+        self.wifi_scan()
 
     # ==================================================================
     # Fehler
@@ -1009,6 +1102,10 @@ class App(object):
             self.mark_dirty()
         elif kind == 'update_install':
             self._update_installed(data)
+        elif kind == 'wifi_scan':
+            self._wifi_scanned(data)
+        elif kind == 'wifi_connect':
+            self._wifi_connected(data)
         elif kind == 'klippy_state':
             self.st.update({'webhooks': {'state': data or 'startup'}})
             self._status_changed()
@@ -1113,8 +1210,11 @@ class App(object):
         if self.dialog is not None:
             dframe = Frame()
             self.dialog.build(dframe)
+            # Vollbild-Dialog (Tastatur): Seite darunter nicht abgedunkelt mitzeichnen
+            full = getattr(self.dialog, 'fullscreen', False)
             self.renderer.render(dframe, ('dialog', self.dialog.layer, self.page_name),
-                                 dim_frame=frame)
+                                 full_bg='surface' if full else 'bg',
+                                 dim_frame=None if full else frame)
             self.frame = dframe
         else:
             self.renderer.render(frame, ('page', self.page_name))

@@ -9,6 +9,11 @@
 #   to-qidi        zur QIDI-Oberfläche zurückwechseln (läuft im Hintergrund, ca. 7 min)
 #   update <dir>   geprüftes, entpacktes Release aus ~/qbdisplay-updates installieren
 #                  (läuft im Hintergrund; Ergebnis in qbdisplay-backup/update-status)
+#   wifi-scan      WLAN-Netze in Reichweite (JSON)
+#   wifi-status    aktuelle WLAN-Verbindung (JSON)
+#   wifi-connect   Netz ausprobieren und nur bei Erfolg speichern; SSID und Passwort
+#                  kommen zeilenweise über stdin (nie als Argument, sonst stünden sie
+#                  in der Prozessliste und im sudo-Protokoll)
 set -u
 
 BACKUP="@BACKUP@"
@@ -146,6 +151,252 @@ rollback() {   # rollback <alter ordner> <tft neu aufgespielt?> <grund>
   status failed "$why"
 }
 
+# --- WLAN ---------------------------------------------------------------------------
+# Spricht direkt mit dem Steuer-Socket von wpa_supplicant (wie wpa_cli), damit SSID und
+# Passwort nie auf einer Befehlszeile landen. SSID und Schlüssel gehen hexkodiert an
+# wpa_supplicant – keine Anführungszeichen, nichts zu escapen.
+# Zwischen den Markierungen steht reines Python (tests/test_helper_wifi.py lädt es).
+read -r -d '' WIFI_PY <<'PY'
+# --- WIFI_PY BEGIN ---
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import sys
+import tempfile
+import time
+
+CTRL = '/var/run/wpa_supplicant/wlan0'
+CONNECT_TIMEOUT = 35      # bis wpa_supplicant verbunden ist
+DHCP_TIMEOUT = 30         # danach bis eine IP-Adresse da ist
+
+
+class Ctrl(object):
+    """Steuer-Socket von wpa_supplicant: Befehl senden, Antwort lesen."""
+
+    def __init__(self, path=CTRL):
+        self.dir = tempfile.mkdtemp(prefix='qbdisplay-wpa-')
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.sock.bind(os.path.join(self.dir, 'sock'))
+        self.sock.connect(path)
+        self.sock.settimeout(10)
+
+    def __call__(self, cmd):
+        self.sock.send(cmd.encode('utf-8'))
+        while True:
+            data = self.sock.recv(65536).decode('utf-8', 'replace')
+            if not data.startswith('<'):     # "<3>CTRL-EVENT-..." sind Ereignisse
+                return data.strip()
+
+    def close(self):
+        self.sock.close()
+        shutil.rmtree(self.dir, True)
+
+
+def unescape(s):
+    """SSID aus scan_results/list_networks (printf-kodiert: \\xNN, \\\\, \\") -> bytes."""
+    out = bytearray()
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == '\\' and i + 1 < len(s):
+            nxt = s[i + 1]
+            if nxt == 'x' and i + 3 < len(s):
+                try:
+                    out.append(int(s[i + 2:i + 4], 16))
+                    i += 4
+                    continue
+                except ValueError:
+                    pass
+            out.extend({'n': b'\n', 'r': b'\r', 't': b'\t', 'e': b'\x1b'}.get(
+                nxt, nxt.encode('utf-8')))
+            i += 2
+            continue
+        out.extend(ch.encode('utf-8'))
+        i += 1
+    return bytes(out)
+
+
+def ssid_text(raw):
+    return raw.decode('utf-8', 'replace')
+
+
+def kv(text):
+    res = {}
+    for line in text.splitlines():
+        if '=' in line:
+            k, v = line.split('=', 1)
+            res[k] = v
+    return res
+
+
+def status(ctl):
+    st = kv(ctl('STATUS'))
+    return {'state': st.get('wpa_state', ''),
+            'ssid': ssid_text(unescape(st.get('ssid', ''))) if st.get('ssid') else '',
+            'ip': st.get('ip_address', ''), 'id': st.get('id')}
+
+
+def scan(ctl, wait=4.0):
+    ctl('SCAN')                 # FAIL-BUSY: es läuft schon eine Suche – Ergebnisse kommen trotzdem
+    time.sleep(wait)
+    best = {}
+    for line in ctl('SCAN_RESULTS').splitlines()[1:]:
+        parts = line.split('\t')
+        if len(parts) < 5:
+            continue
+        _bssid, freq, level, flags, name = parts[:5]
+        raw = unescape(name)
+        if not raw or raw.strip(b'\x00') == b'':
+            continue            # verstecktes Netz
+        try:
+            level, freq = int(level), int(freq)
+        except ValueError:
+            continue
+        secure = any(k in flags for k in ('WPA', 'RSN', 'WEP', 'SAE'))
+        if 'WEP' in flags and not any(k in flags for k in ('WPA', 'RSN')):
+            kind = 'wep'
+        elif 'SAE' in flags and 'PSK' not in flags:
+            kind = 'sae'        # nur WPA3 – kann dieser Stick meist nicht
+        elif 'EAP' in flags and 'PSK' not in flags:
+            kind = 'eap'        # Firmen-WLAN mit Benutzerkonto
+        else:
+            kind = 'psk' if secure else 'open'
+        cur = best.get(raw)
+        if cur is None or level > cur['signal']:
+            best[raw] = {'ssid': ssid_text(raw), 'signal': level, 'freq': freq, 'kind': kind}
+    current = status(ctl).get('ssid')
+    nets = sorted(best.values(), key=lambda n: -n['signal'])
+    for n in nets:
+        n['current'] = n['ssid'] == current
+    return nets
+
+
+def networks(ctl):
+    """Gespeicherte Netze: [(id, ssid-bytes, flags)]"""
+    res = []
+    for line in ctl('LIST_NETWORKS').splitlines()[1:]:
+        parts = line.split('\t')
+        if len(parts) >= 2:
+            res.append((parts[0], unescape(parts[1]), parts[3] if len(parts) > 3 else ''))
+    return res
+
+
+def check_input(ssid, psk):
+    raw = ssid.encode('utf-8')
+    if not 1 <= len(raw) <= 32:
+        return 'SSID ungültig'
+    if psk and not (8 <= len(psk) <= 63 and all(32 <= ord(c) <= 126 for c in psk)) \
+            and not re.match(r'^[0-9a-fA-F]{64}$', psk):
+        return 'Passwort muss 8 bis 63 Zeichen lang sein'
+    return None
+
+
+def psk_hex(ssid_raw, psk):
+    if len(psk) == 64:
+        return psk.lower()
+    return hashlib.pbkdf2_hmac('sha1', psk.encode('ascii'), ssid_raw, 4096, 32).hex()
+
+
+def ok(res):
+    if res != 'OK':
+        raise RuntimeError(res)
+
+
+def connect(ctl, ssid, psk, sleep=time.sleep, clock=time.time):
+    """Neues Netz ausprobieren. Klappt es nicht, wird es wieder entfernt und das alte
+    WLAN wieder aufgenommen; gespeichert wird nur bei Erfolg."""
+    err = check_input(ssid, psk)
+    if err:
+        return {'ok': False, 'reason': 'input', 'message': err}
+    raw = ssid.encode('utf-8')
+    before = networks(ctl)
+    nid = ctl('ADD_NETWORK')
+    if not nid.isdigit():
+        return {'ok': False, 'reason': 'error', 'message': nid}
+    try:
+        ok(ctl('SET_NETWORK %s ssid %s' % (nid, raw.hex())))
+        if psk:
+            ok(ctl('SET_NETWORK %s psk %s' % (nid, psk_hex(raw, psk))))
+        else:
+            ok(ctl('SET_NETWORK %s key_mgmt NONE' % nid))
+        ok(ctl('SET_NETWORK %s scan_ssid 1' % nid))
+        ok(ctl('SELECT_NETWORK %s' % nid))
+    except Exception as e:      # noqa
+        ctl('REMOVE_NETWORK %s' % nid)
+        restore(ctl, before)
+        return {'ok': False, 'reason': 'error', 'message': str(e)}
+    end = clock() + CONNECT_TIMEOUT
+    seen = set()
+    st = {}
+    while clock() < end:
+        st = status(ctl)
+        seen.add(st['state'])
+        if st['state'] == 'COMPLETED' and st['id'] == nid:
+            break
+        sleep(1)
+    else:
+        ctl('REMOVE_NETWORK %s' % nid)
+        restore(ctl, before)
+        reason = 'auth' if seen & {'4WAY_HANDSHAKE', 'GROUP_HANDSHAKE'} else 'notfound'
+        return {'ok': False, 'reason': reason}
+    end = clock() + DHCP_TIMEOUT
+    while not st.get('ip') and clock() < end:
+        sleep(1)
+        st = status(ctl)
+    if not st.get('ip'):
+        ctl('REMOVE_NETWORK %s' % nid)
+        restore(ctl, before)
+        return {'ok': False, 'reason': 'dhcp'}
+    # Erfolg: gleichnamige alte Einträge ersetzen, übrige wieder zulassen, speichern
+    for oid, oraw, _flags in before:
+        if oraw == raw:
+            ctl('REMOVE_NETWORK %s' % oid)
+    for oid, oraw, flags in before:
+        if oraw != raw and '[DISABLED]' not in flags:
+            ctl('ENABLE_NETWORK %s' % oid)
+    ctl('SET_NETWORK %s priority 10' % nid)
+    saved = ctl('SAVE_CONFIG') == 'OK'
+    return {'ok': True, 'ssid': ssid, 'ip': st['ip'], 'saved': saved}
+
+
+def restore(ctl, before):
+    for oid, _raw, flags in before:
+        if '[DISABLED]' not in flags:
+            ctl('ENABLE_NETWORK %s' % oid)
+    ctl('REASSOCIATE')
+
+
+def main(argv, stdin=sys.stdin):
+    ctl = Ctrl()
+    try:
+        if argv[0] == 'scan':
+            res = scan(ctl)
+        elif argv[0] == 'status':
+            res = status(ctl)
+        elif argv[0] == 'connect':
+            ssid = stdin.readline().rstrip('\n')
+            psk = stdin.readline().rstrip('\n')
+            res = connect(ctl, ssid, psk)
+        else:
+            return 2
+    finally:
+        ctl.close()
+    print(json.dumps(res))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
+# --- WIFI_PY END ---
+PY
+
+wifi() {   # wifi scan|status|connect
+  python3 -c "$WIFI_PY" "$1"
+}
+
 case "${1:-}" in
   version)
     cat /root/xindi/version
@@ -157,6 +408,7 @@ case "${1:-}" in
     ;;
   to-qidi-run)
     systemctl disable --now qbdisplay
+    rm -f "$TFT_SUM"      # danach ist QIDIs Display-Datei drauf
     wake_display
     cp "$QIDI_TFT" "$TFT_TARGET"
     sync
@@ -174,8 +426,19 @@ case "${1:-}" in
     out="$(check_update "${2:-}")" || { FROM="$(pkg_version "$APPDIR")"; status failed "$out"; exit 1; }
     run_update "$2"
     ;;
+  wifi-scan)
+    wifi scan
+    ;;
+  wifi-status)
+    wifi status
+    ;;
+  wifi-connect)
+    # während eines Drucks nie das Netz wechseln (Verbindung bricht kurz ab)
+    printer_busy && { echo '{"ok": false, "reason": "busy"}'; exit 1; }
+    wifi connect
+    ;;
   *)
-    echo "Aufruf: $0 version|to-qidi|update <ordner>" >&2
+    echo "Aufruf: $0 version|to-qidi|update <ordner>|wifi-scan|wifi-status|wifi-connect" >&2
     exit 2
     ;;
 esac

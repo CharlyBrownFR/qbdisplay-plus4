@@ -83,19 +83,26 @@ else
   echo "Konfiguration bleibt: $CFG"
 fi
 
-say "Display-Datei aufspielen (ca. 2 min, Display bleibt solange dunkel)"
-wake_display
-sudo cp "$TFT" /root/800_480.tft
-sync
-sudo systemctl restart makerbase-client
-for i in $(seq 1 90); do
-  sudo test -e /root/800_480.tft || break
-  sleep 10
-done
-sudo test -e /root/800_480.tft && fail "Display-Update nach 15 min nicht abgeschlossen (journalctl -u makerbase-client)"
-echo "Display-Datei aufgespielt"
-# merken, welche Datei auf dem Display ist (Update am Display spielt sie nur bei Änderung neu auf)
-sha256sum "$TFT" | cut -d' ' -f1 > "$BACKUP/installed-tft.sha256"
+# Gleiche Display-Datei schon drauf (qbdisplay läuft, QIDI-Oberfläche aus)? Dann nicht neu
+# aufspielen. FLASH=1 ./install.sh erzwingt es.
+SUM="$(sha256sum "$TFT" | cut -d' ' -f1)"
+if [ "${FLASH:-0}" != 1 ] && [ "$SUM" = "$(cat "$BACKUP/installed-tft.sha256" 2>/dev/null)" ]    && systemctl is-active --quiet qbdisplay && ! systemctl is-enabled --quiet makerbase-client; then
+  say "Display-Datei unverändert – wird nicht neu aufgespielt"
+else
+  say "Display-Datei aufspielen (ca. 2 min, Display bleibt solange dunkel)"
+  wake_display
+  sudo cp "$TFT" /root/800_480.tft
+  sync
+  sudo systemctl restart makerbase-client
+  for i in $(seq 1 90); do
+    sudo test -e /root/800_480.tft || break
+    sleep 10
+  done
+  sudo test -e /root/800_480.tft && fail "Display-Update nach 15 min nicht abgeschlossen (journalctl -u makerbase-client)"
+  echo "Display-Datei aufgespielt"
+  # merken, welche Datei auf dem Display ist (Update am Display spielt sie nur bei Änderung neu auf)
+  echo "$SUM" > "$BACKUP/installed-tft.sha256"
+fi
 
 say "Hilfsskript (Version lesen, Wechsel zur QIDI-Oberfläche am Display)"
 sed "s#@BACKUP@#$BACKUP#; s#@APPDIR@#$DIR#; s#@USER@#$(id -un)#" "$DIR/systemd/qbdisplay-helper"   | sudo tee /usr/local/sbin/qbdisplay-helper >/dev/null
@@ -122,7 +129,8 @@ sed -e "s#^User=.*#User=$(id -un)#" \
     -e "s#^ExecStart=.*#ExecStart=/usr/bin/python3 -m qbdisplay -c $CFG#" \
     "$DIR/systemd/qbdisplay.service" | sudo tee /etc/systemd/system/qbdisplay.service >/dev/null
 sudo systemctl daemon-reload
-sudo systemctl enable --now qbdisplay
+sudo systemctl enable qbdisplay
+sudo systemctl restart qbdisplay     # läuft er schon (alte Version), sonst bliebe der alte Code aktiv
 sleep 5
 systemctl is-active --quiet qbdisplay || fail "qbdisplay startet nicht (journalctl -u qbdisplay)"
 

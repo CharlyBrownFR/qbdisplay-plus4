@@ -457,6 +457,42 @@ def s_home_two_boxes(app):
     app.go('home')
 
 
+WIFI_NETS = [
+    {'ssid': 'Werkstatt', 'signal': -48, 'freq': 2437, 'kind': 'psk', 'current': True},
+    {'ssid': 'FRITZ!Box 7590 XY', 'signal': -61, 'freq': 2412, 'kind': 'psk', 'current': False},
+    {'ssid': 'Gast', 'signal': -70, 'freq': 2462, 'kind': 'open', 'current': False},
+    {'ssid': 'Nachbar_5G', 'signal': -79, 'freq': 2422, 'kind': 'sae', 'current': False},
+    {'ssid': 'Firma', 'signal': -88, 'freq': 2442, 'kind': 'eap', 'current': False},
+]
+
+
+def s_wifi_list(app):
+    app.wifi = {'state': 'done', 'nets': list(WIFI_NETS), 'current': 'Werkstatt', 'page': 0}
+    app.go('wifi')
+
+
+def s_wifi_password(app):
+    from qbdisplay.ui.wifi import PasswordDialog
+    s_wifi_list(app)
+    dlg = PasswordDialog(app, 'FRITZ!Box 7590 XY')
+    dlg.text = 'Sommer"2026\\x'
+    app.open_dialog(dlg)
+
+
+def s_wifi_password_symbols(app):
+    from qbdisplay.ui.wifi import PasswordDialog
+    s_wifi_list(app)
+    dlg = PasswordDialog(app, 'FRITZ!Box 7590 XY')
+    dlg.text = 'abc'
+    dlg.sym = True
+    app.open_dialog(dlg)
+
+
+def s_wifi_connecting(app):
+    s_wifi_list(app)
+    app.wifi['connecting'] = 'FRITZ!Box 7590 XY'
+
+
 SCENARIOS = [
     ('01_start_leerlauf', s_home_idle),
     ('02_start_druck_farbwechsel', s_home_print),
@@ -492,4 +528,8 @@ SCENARIOS = [
     ('32_system_update_fehlgeschlagen', s_system_update_failed),
     ('33_system_update_testversion', s_system_update_test),
     ('34_system_netzwerk_cloud', s_system_network_cloud),
+    ('35_wlan_liste', s_wifi_list),
+    ('36_wlan_passwort', s_wifi_password),
+    ('37_wlan_sonderzeichen', s_wifi_password_symbols),
+    ('38_wlan_verbinde', s_wifi_connecting),
 ]
