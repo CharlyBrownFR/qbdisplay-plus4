@@ -123,6 +123,35 @@ class ConfirmDialog(Dialog):
         self.on_ok()
 
 
+class ChoiceDialog(Dialog):
+    """Rückfrage mit mehreren Wegen. buttons: [(tid, label, kind, action, weight)];
+    jede Aktion schließt zuerst den Dialog."""
+    def __init__(self, ctx, title, text, buttons):
+        Dialog.__init__(self, ctx)
+        self.title, self.text, self.items = title, text, buttons
+        self.layer = ('choice', title, text)
+
+    def build(self, frame):
+        b = self.box
+        self.frame_box(frame)
+
+        def paint(c, r):
+            kicker(c, r.x, r.y, _('Bitte bestätigen'), 'accent')
+            c.text(r.x, r.y + 24, r.w, 30, self.title, F.TITLE, 'text', 'surface')
+            W.text_lines(c, r.x, r.y + 64, r.w, self.text, F.TEXT, 'text2', 'surface', max_lines=3)
+        frame.region('dlg.body', Rect(b.x + 28, b.y + 22, b.w - 56, 136), 0, paint,
+                     clear='surface')
+        self.buttons(frame, [(tid, label, kind, None, self._wrap(action), weight)
+                             for tid, label, kind, action, weight in self.items])
+
+    def _wrap(self, action):
+        def run():
+            self.ctx.close_dialog()
+            if action is not None:
+                action()
+        return run
+
+
 class InfoDialog(Dialog):
     def __init__(self, ctx, title, text):
         Dialog.__init__(self, ctx)

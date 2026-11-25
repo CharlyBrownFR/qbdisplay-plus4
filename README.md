@@ -13,7 +13,8 @@ wird nur QIDIs Display-Programm. Der Rückweg zur QIDI-Oberfläche ist ein Befeh
   zuordnen, RFID lesen, „in der Düse“ auf einen Blick
 - **Mit oder ohne Box:** ohne Box zeigt die Filament-Seite die externe Spule; Box im Betrieb
   an- oder abstecken wird erkannt. Mehrere Boxen (bis 4) lassen sich durchblättern
-- **Box-Trocknung** mit Profilen, Restzeit und Feuchte-Bewertung je Material
+- **Box-Trocknung** mit Profilen, Restzeit und Feuchte-Bewertung je Material; vor dem Start
+  Hinweis auf eingelegtes Filament (die Spulen drehen sich) mit **Alle auswerfen**
 - Bewegen, Dateien, Lüfter, Licht, Netzwerk-Status („Nur LAN“)
 - **WLAN einrichten** am Display (ab 0.5): Netz wählen, Passwort über die Bildschirmtastatur.
   Das neue Netz wird erst ausprobiert und nur gespeichert, wenn es klappt – sonst bleibt das alte
@@ -98,7 +99,8 @@ program is swapped. Going back to the QIDI UI is one command.
   read RFID, see at a glance what is in the nozzle
 - **With or without a box:** without one, the filament page shows the external spool; plugging
   the box in or out while running is detected. Several boxes (up to 4) can be paged through
-- **Box drying** with profiles, time left and humidity rating per material
+- **Box drying** with profiles, time left and humidity rating per material; before it starts,
+  a reminder about inserted filament (the spools rotate) with **Eject all**
 - Move, files, fans, light, network status ("LAN only")
 - **Wi-Fi setup** on the display (from 0.5): pick a network, enter the password on the on-screen
   keyboard. The new network is tried first and only saved if it works – otherwise the old one stays

@@ -316,6 +316,18 @@ def s_drying_running(app):
     app.go('drying')
 
 
+def s_drying_confirm(app):
+    app.go('drying')
+    app.dry_start()
+
+
+def s_drying_confirm_empty(app):
+    app.st.update({'mmu': {'gate_status': [0, 0, 0, 0], 'gate': -1, 'filament_pos': 0}})
+    app._status_changed()
+    app.go('drying')
+    app.dry_start()
+
+
 def s_files(app):
     app.go('files')
 
@@ -564,4 +576,6 @@ SCENARIOS = [
     ('40_notbewegung_bestaetigen', s_move_free_confirm),
     ('41_notbewegung', s_move_free),
     ('42_anzeige_vorschau_scharf', s_system_display_sharp),
+    ('43_trocknung_rueckfrage', s_drying_confirm),
+    ('44_trocknung_rueckfrage_leer', s_drying_confirm_empty),
 ]

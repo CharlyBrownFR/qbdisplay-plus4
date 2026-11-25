@@ -45,6 +45,7 @@ from .ui.wifi import WifiPage, PasswordDialog
 log = logging.getLogger(__name__)
 
 FREE_TIMEOUT = 300       # Notbewegung endet nach so vielen Sekunden ohne Eingabe
+EJECT_TIMEOUT = 300      # Alle auswerfen: so lange auf die Antwort je Befehl warten
 
 PAGES = {
     'home': HomePage, 'filament': BoxPage, 'slot_edit': SlotEditPage, 'drying': DryingPage,
@@ -100,6 +101,11 @@ class App(object):
         self.toolchange_tracker = model.ToolchangeTracker(cfg.getfloat('box', 'purge_seconds'))
         self.state_file = cfg.path_of('state', 'file')
         self.drying_tracker = model.DryingTracker(self.state_file)
+        self._eject_queue = None     # Alle auswerfen: [('unload'|'eject', gate), ...]
+        self._eject_wait = False     # Befehl unterwegs
+        self._eject_next = 0.0       # frühestens dann den nächsten Schritt
+        self._eject_sent = 0.0
+        self._eject_done = []
         # Sprache: in der Oberfläche gewählt (Zustandsdatei) vor Vorgabe aus der Konfiguration
         i18n.set_language(model.read_state(self.state_file).get('language')
                           or cfg.get('display', 'language'))
@@ -365,7 +371,8 @@ class App(object):
     # ==================================================================
     # Befehle an Klipper
     # ==================================================================
-    def gcode(self, script, label=None, on_done=None, retry=None, context=None):
+    def gcode(self, script, label=None, on_done=None, retry=None, context=None,
+              on_error=None):
         """G-Code senden. Fehler -> Fehlerdialog (Box-Befehle) bzw. Hinweis."""
         log.info('G-Code: %s', script.replace('\n', ' | '))
         if self.rpc is None:
@@ -380,6 +387,8 @@ class App(object):
                     self.show_command_error(err, retry, context)
                 else:
                     self.notify(err.splitlines()[0][:80], 'err', 6.0)
+                if on_error is not None:
+                    on_error()
             elif on_done is not None:
                 on_done()
             self.mark_dirty()
@@ -554,6 +563,105 @@ class App(object):
         self.mark_dirty()
 
     def dry_start(self):
+        if self.drying.active:
+            self._dry_start()
+            return
+        gates = self.inserted_gates()
+        if gates and self.can_eject_all():
+            names = ', '.join(model.letter(g) for g in gates)
+            title = (_('Slot %s ist noch eingelegt') if len(gates) == 1
+                     else _('Slots %s sind noch eingelegt')) % names
+            self.open_dialog(dialogs.ChoiceDialog(
+                self, title,
+                _('Die Spulen drehen sich beim Trocknen. Erst auswerfen und die Enden am '
+                  'Spulenrand festklemmen, sonst kann sich das Filament verheddern.'),
+                [('no', _('Abbrechen'), 'secondary', None, 10),
+                 ('eject', _('Alle auswerfen'), 'primary', self.eject_all, 13),
+                 ('yes', _('Trotzdem'), 'secondary', self._dry_start, 10)]))
+            return
+        self.confirm(_('Filament ausgeworfen?'),
+                     _('Die Spulen drehen sich beim Trocknen. Vorher alles Filament auswerfen '
+                       'und die Enden am Spulenrand festklemmen, sonst kann es sich verheddern.'),
+                     _('Starten'), self._dry_start, danger=False)
+
+    # --- Alle auswerfen ---------------------------------------------------------
+    def inserted_gates(self):
+        """Box-Slots, in denen Filament eingelegt oder geladen ist."""
+        return [s.index for s in self.slots if s.state in ('ready', 'loaded', 'loading')]
+
+    def can_eject_all(self):
+        return self.has_box and self._motion_allowed() and self._eject_queue is None
+
+    def eject_all(self):
+        if not self.can_eject_all():
+            return
+        gates = self.inserted_gates()
+        if not gates:
+            self.notify(_('Kein Filament eingelegt'), 'info')
+            return
+        queue = []
+        lg = self.loaded_gate
+        if lg is not None and lg in gates:
+            queue.append(('unload', lg))
+        queue += [('eject', g) for g in gates]
+        self._eject_queue = queue
+        self._eject_wait = False
+        self._eject_next = 0.0
+        self._eject_done = []
+        self._eject_total = len(gates)
+        self._eject_step()
+
+    def _box_busy(self):
+        return (self.st.mmu.get('action') or 'Idle') != 'Idle'
+
+    def _eject_step(self):
+        """Nächsten Schritt senden, sobald der vorige fertig ist und die Box ruht."""
+        q = self._eject_queue
+        if q is not None and self._eject_wait and self.now - self._eject_sent > EJECT_TIMEOUT:
+            self._eject_abort(_('Keine Antwort von der Box - Alle auswerfen abgebrochen'))
+            return
+        if q is None or self._eject_wait or self.now < self._eject_next or self._box_busy():
+            return
+        if not self._motion_allowed():
+            self._eject_abort(_('Alle auswerfen abgebrochen'))
+            return
+        if not q:
+            self._eject_queue = None
+            names = ', '.join(model.letter(g) for g in self._eject_done)
+            self.info(_('Filament ausgeworfen'),
+                      _('Ausgeworfen: Slot %s. Jetzt die Enden am Spulenrand festklemmen, '
+                        'dann Trocknen starten.') % names)
+            return
+        what, gate = q.pop(0)
+        if what == 'unload':
+            cmd = self.box_cmd('cmd_unload', gate=gate)
+            label = _('Slot %s wird entladen ...') % model.letter(gate)
+        else:
+            cmd = self.box_cmd('cmd_eject', gate=gate)
+            label = _('Slot %s wird ausgeworfen (%d/%d) ...') % (
+                model.letter(gate), len(self._eject_done) + 1, self._eject_total)
+        self._eject_wait = True
+        self._eject_sent = self.now
+
+        def ok():
+            if what == 'eject':
+                self._eject_done.append(gate)
+            self._eject_wait = False
+            self._eject_next = self.now + 2.0    # Box-Status nachziehen lassen
+
+        def failed():
+            self._eject_queue = None
+            self._eject_wait = False
+        self.gcode(cmd, label, on_done=ok, on_error=failed, retry=cmd, context={
+            'gate': gate, 'what': (_('Beim Entladen von Slot %s') if what == 'unload'
+                                   else _('Beim Auswerfen von Slot %s')) % model.letter(gate)})
+
+    def _eject_abort(self, text):
+        self._eject_queue = None
+        self._eject_wait = False
+        self.notify(text, 'warn', 6.0)
+
+    def _dry_start(self):
         sel = self.dry_selection()
         maxt = self.cfg.getint('box', 'dry_max_temp')
         temp = min(sel['temp'], maxt)
@@ -1336,6 +1444,7 @@ class App(object):
             self._minute = minute
             self.mark_dirty()
         self._check_free_move()
+        self._eject_step()
         if self._toast and self._toast[2] < now:
             self._toast = None
             self.mark_dirty()

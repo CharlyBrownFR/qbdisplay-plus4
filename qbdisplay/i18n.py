@@ -235,7 +235,8 @@ EN = {
         'Suggested from the slots: slots %s hold %s.',
     'Bei gemischter Belegung gilt das Profil mit der niedrigsten Temperatur.':
         'With mixed materials, the profile with the lowest temperature applies.',
-    'Spulen bleiben in der Box.': 'Spools stay in the box.',
+    'Vorher Filament auswerfen und Enden festklemmen, die Spulen drehen sich.':
+        'Unload all filament first and clip the ends, the spools rotate.',
     'Keine Slot-Belegung bekannt. Profil passend zum Material wählen.':
         'Slot contents unknown. Choose the profile that matches the material.',
     'Einstellung': 'Settings',
@@ -443,6 +444,28 @@ EN = {
     'Trocknung + 1 h': 'Drying + 1 h',
     'Trocknung beendet': 'Drying stopped',
     'Trocknung abbrechen?': 'Stop drying?',
+    'Filament ausgeworfen?': 'Filament unloaded?',
+    'Slot %s ist noch eingelegt': 'Slot %s is still inserted',
+    'Slots %s sind noch eingelegt': 'Slots %s are still inserted',
+    'Die Spulen drehen sich beim Trocknen. Erst auswerfen und die Enden am Spulenrand '
+    'festklemmen, sonst kann sich das Filament verheddern.':
+        'The spools rotate while drying. Eject first and clip the ends to the spool rim, '
+        'otherwise the filament can tangle.',
+    'Alle auswerfen': 'Eject all',
+    'Trotzdem': 'Anyway',
+    'Kein Filament eingelegt': 'No filament inserted',
+    'Alle auswerfen abgebrochen': 'Eject all cancelled',
+    'Keine Antwort von der Box - Alle auswerfen abgebrochen':
+        'No answer from the box - eject all cancelled',
+    'Filament ausgeworfen': 'Filament ejected',
+    'Ausgeworfen: Slot %s. Jetzt die Enden am Spulenrand festklemmen, dann Trocknen starten.':
+        'Ejected: slot %s. Now clip the ends to the spool rim, then start drying.',
+    'Slot %s wird entladen ...': 'Unloading slot %s ...',
+    'Slot %s wird ausgeworfen (%d/%d) ...': 'Ejecting slot %s (%d/%d) ...',
+    'Die Spulen drehen sich beim Trocknen. Vorher alles Filament auswerfen und die Enden am '
+    'Spulenrand festklemmen, sonst kann es sich verheddern.':
+        'The spools rotate while drying. Unload all filament first and clip the ends to '
+        'the spool rim, otherwise it can tangle.',
     'Die Box-Heizung wird ausgeschaltet. Die bisherige Trocknungszeit geht nicht verloren, '
     'die Spulen kühlen ab.':
         'The box heater is switched off. The drying done so far is not lost; the spools '

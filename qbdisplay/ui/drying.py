@@ -104,10 +104,10 @@ class DryingPage(Page):
             if len(others) > 1:
                 hint += ' ' + _('Bei gemischter Belegung gilt das Profil mit der niedrigsten '
                                 'Temperatur.')
-            hint += ' ' + _('Spulen bleiben in der Box.')
+            hint += ' ' + _('Vorher Filament auswerfen und Enden festklemmen, die Spulen drehen sich.')
         else:
             hint = _('Keine Slot-Belegung bekannt. Profil passend zum Material wählen.') + \
-                ' ' + _('Spulen bleiben in der Box.')
+                ' ' + _('Vorher Filament auswerfen und Enden festklemmen, die Spulen drehen sich.')
         info = Rect(100, 314, 420, 154)
 
         def paint_info(c, r):

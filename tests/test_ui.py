@@ -173,6 +173,8 @@ class AppFlowTest(unittest.TestCase):
             if 'adj.t+' not in [t.tid for t in app.frame.targets]:
                 break
         self.tap(app, 'start')
+        self.assertEqual(gcodes(app), [])              # erst Rückfrage
+        self.tap(app, 'yes')
         self.assertEqual(gcodes(app), ['MMU_HEATER DRY=1 TEMP=65 TIMER=720'])
         self.assertEqual(app.drying_tracker.data['temp'], 65)
 
