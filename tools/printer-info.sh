@@ -9,7 +9,7 @@
 # (at your option) any later version. See <https://www.gnu.org/licenses/>.
 #
 # Only READS information, changes nothing, needs no sudo.
-# Run on the printer as user mks:
+# Run on the printer as the normal SSH user (mks, qidi, ...):
 #     bash printer-info.sh
 # Result: ~/printer-info.txt  (please have a look at it before you send it)
 # No IP addresses, Wi-Fi names, host names, passwords or serial numbers are collected.
@@ -18,12 +18,18 @@ NAME="$(basename "${0%.sh}")"
 case "$NAME" in bash|sh|-bash) NAME=printer-info ;; esac
 OUT="${OUT:-$HOME/$NAME.txt}"
 API="http://127.0.0.1:7125"
+# printer_data: own home first, then the usual QIDI users
+PD=""
+for d in "$HOME/printer_data" /home/mks/printer_data /home/qidi/printer_data /home/*/printer_data; do
+    [ -d "$d" ] && { PD="$d"; break; }
+done
 
 sec() { printf '\n===== %s =====\n' "$1"; }
 get() { curl -s --max-time 5 "$API$1" || echo "(no answer from Moonraker)"; }
 
 {
 echo "printer-info $(date -u '+%Y-%m-%d %H:%M UTC')"
+echo "user: $(id -un)  printer_data: ${PD:-(not found)}"
 
 sec "System"
 uname -srm
@@ -31,7 +37,9 @@ tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
 grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release 2>/dev/null
 python3 --version 2>&1
 dpkg-query -W -f='${Package} ${Version}\n' 'qidi*' 2>/dev/null
-ls /home/mks 2>/dev/null | grep -iE 'QD_|xindi|tjc|qbdisplay|screen|client|klipper|moonraker|fluidd|mainsail' | tr '\n' ' '; echo
+for h in /home/*; do
+    echo "$h: $(ls "$h" 2>/dev/null | grep -iE 'QD_|xindi|tjc|qbdisplay|screen|client|klipper|moonraker|fluidd|mainsail|printer_data' | tr '\n' ' ')"
+done
 
 sec "Display (framebuffer)"
 ls -l /dev/fb* 2>/dev/null || echo "(no /dev/fb*)"
@@ -71,7 +79,7 @@ ls -l /dev/ttyS* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
 sec "Display program and services"
 # QIDI's screen program: xindi (TJC display) on the Plus4, QD_*/bin/client (LVGL) on the Q2
 ps -eo pid,user,args \
-    | grep -E 'xindi|QD_|/client|qbdisplay|lvgl|screen|/home/mks/[^ ]*/bin/|^ *[0-9]+ +root +/root/' \
+    | grep -E 'xindi|QD_|/client|qbdisplay|lvgl|screen|/home/[^/ ]+/[^ ]*/bin/|^ *[0-9]+ +root +/root/' \
     | grep -vE 'grep|klippy|moonraker|sshd|nginx|crowsnest|ustreamer'
 for pid in $(pgrep -f 'xindi|QD_|/client|qbdisplay'); do
     echo "cgroup of $pid: $(grep -o 'system.slice/[^ ]*' /proc/$pid/cgroup 2>/dev/null | head -1)"
@@ -127,10 +135,10 @@ for k in sorted(v):
 '
 
 sec "Config files (section names only)"
-ls ~/printer_data/config 2>/dev/null | tr '\n' ' '; echo
+ls "$PD/config" 2>/dev/null | tr '\n' ' '; echo
 for f in printer.cfg box.cfg box1.cfg; do
     echo "-- $f"
-    grep -E '^\[' ~/printer_data/config/$f 2>/dev/null | tr '\n' ' '; echo
+    grep -E '^\[' "$PD/config/$f" 2>/dev/null | tr '\n' ' '; echo
 done
 } > "$OUT" 2>&1
 
