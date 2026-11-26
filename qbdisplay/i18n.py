@@ -452,6 +452,39 @@ EN = {
         'The spools rotate while drying. Eject first and clip the ends to the spool rim, '
         'otherwise the filament can tangle.',
     'Alle auswerfen': 'Eject all',
+    'Die Box ist noch %d °C warm. %s kann in den Schläuchen am Boxboden weich sein und '
+    'klemmen - besser unter %d °C abkühlen lassen.':
+        'The box is still %d °C warm. %s in the tubes on the box floor can be soft and jam - '
+        'better let it cool below %d °C.',
+    'Die Box hat vor %d min noch geheizt. %s kann in den Schläuchen am Boxboden weich sein und '
+    'klemmen - besser %d min abwarten.':
+        'The box was still heating %d min ago. %s in the tubes on the box floor can be soft and '
+        'jam - better wait %d min.',
+    'Am Druckkopf steckt Filament, obwohl kein Slot geladen ist - vermutlich ein Rest im '
+    'Schlauch. Erst entfernen, sonst klemmt es.':
+        'There is filament at the toolhead although no slot is loaded - probably a piece left '
+        'in the tube. Remove it first, or it will jam.',
+    'Filament am Druckkopf, aber kein Slot geladen - vermutlich ein Rest im Schlauch. '
+    'Erst entfernen.':
+        'Filament at the toolhead, but no slot loaded - probably a piece left in the tube. '
+        'Remove it first.',
+    'Am Druckkopf ist kein Filament, die Box meldet %s aber als geladen. Entladen setzt das '
+    'zurück.':
+        'No filament at the toolhead, but the box reports %s as loaded. Unloading resets this.',
+    'Slot %s trotzdem laden?': 'Load slot %s anyway?',
+    'Laden': 'Load',
+    'Filament zuordnen - Slot antippen zum Wechseln': 'Assign filament - tap a slot to change',
+    'kein passender Slot': 'no matching slot',
+    'Licht an': 'Light on',
+    'Licht aus': 'Light off',
+    '%s in Slot %s eingelegt': '%s inserted in slot %s',
+    'PLA und TPU nur ausgeworfen trocknen: In den Schläuchen am beheizten Boxboden werden sie '
+    'weich und können klemmen.':
+        'Dry PLA and TPU only when ejected: in the tubes on the heated box floor they soften '
+        'and can jam.',
+    'Höchstens %d °C wegen %s in Slot %s.': 'At most %d °C because of %s in slot %s.',
+    'Eingelegt max. %d °C (QIDI-Grenze %s), ausgeworfen mehr.':
+        'Inserted max. %d °C (QIDI limit %s), more when ejected.',
     'Trotzdem': 'Anyway',
     'Kein Filament eingelegt': 'No filament inserted',
     'Alle auswerfen abgebrochen': 'Eject all cancelled',

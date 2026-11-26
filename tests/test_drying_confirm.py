@@ -41,6 +41,10 @@ class DryingConfirmTest(unittest.TestCase):
 
     def test_change_while_running_no_question(self):
         self.scenarios.s_drying_running(self.app)
+        self.app.st.update({'mmu': {'gate_material': ['PETG', 'PETG', 'PETG', ''],
+                                    'gate_filament_name': ['', '', '', '']}})
+        self.app._status_changed()
+        self.app._cache.clear()
         self.app.dry_start()
         self.assertEqual(len(self.sent), 1)
         self.assertIsNone(self.app.dialog)

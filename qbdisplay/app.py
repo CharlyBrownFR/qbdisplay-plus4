@@ -76,6 +76,7 @@ def subscribe_objects(cfg):
         cfg.get('box', 'climate_sensor'): ['temperature', 'humidity'],
         'mmu': None,
         'save_variables': None,
+        'hall_filament_width_sensor': ['Diameter'],
     }
     if cfg.get('box', 'backend').strip().lower() == 'qidi':
         objs.pop('mmu')
@@ -105,6 +106,7 @@ class App(object):
         self._eject_wait = False     # Befehl unterwegs
         self._eject_next = 0.0       # frühestens dann den nächsten Schritt
         self._eject_sent = 0.0
+        self._box_heat = {}          # Box -> Zeitpunkt, zu dem ihre Heizung zuletzt lief
         self._eject_done = []
         # Sprache: in der Oberfläche gewählt (Zustandsdatei) vor Vorgabe aus der Konfiguration
         i18n.set_language(model.read_state(self.state_file).get('language')
@@ -412,7 +414,69 @@ class App(object):
             gate = qidi.SLOT_EXTERNAL
         return self.cfg.command(key, gate=gate, **values)
 
-    def load_slot(self, gate):
+    # --- Schutz: warme Box, Filament am Druckkopf --------------------------------
+    def gate_box_max(self, gate):
+        v = model._get(self.st.mmu.get('gate_box_max'), gate)
+        if v is None and self.flist is not None and 0 <= gate < len(self.slots):
+            s = self.slots[gate]
+            idx = self.flist.find(s.name, s.material)
+            if idx is not None:
+                v = self.flist.filaments.get(idx, {}).get('box_max_temp')
+        return v
+
+    def warm_box(self, gate):
+        """Text, wenn PLA/TPU aus einer noch warmen Box bewegt würde, sonst None."""
+        if gate is None or gate < 0 or gate >= len(self.slots):
+            return None
+        s = self.slots[gate]
+        if not model.dry_sensitive(s.material, self.gate_box_max(gate)):
+            return None
+        unit = gate // 4
+        temp = self.unit_climate(unit)[0]
+        since = self._box_heat.get(unit)
+        mins = None if since is None else (self.now - since) / 60.0
+        hot = temp is not None and temp > model.COOL_TEMP
+        recent = mins is not None and mins < model.COOL_MINUTES
+        if not hot and not recent:
+            return None
+        if hot:
+            return _('Die Box ist noch %d °C warm. %s kann in den Schläuchen am Boxboden '
+                     'weich sein und klemmen - besser unter %d °C abkühlen lassen.') % (
+                int(round(temp)), model.base_type(s.material), model.COOL_TEMP)
+        return _('Die Box hat vor %d min noch geheizt. %s kann in den Schläuchen am '
+                 'Boxboden weich sein und klemmen - besser %d min abwarten.') % (
+            int(mins), model.base_type(s.material), model.COOL_MINUTES)
+
+    def head_mismatch(self):
+        """'stray': Filament am Druckkopf, aber kein Slot geladen; 'missing': ein Slot gilt
+        als geladen, am Druckkopf ist aber keins. Nur im Leerlauf, sonst None."""
+        if self.pstate not in ('idle', 'error') or (self.st.mmu.get('action') or 'Idle') != 'Idle':
+            return None
+        head = model.head_filament(self.st, self.cfg.getfloat('box', 'filament_min_diameter'))
+        if head is None:
+            return None
+        lg = self.loaded_gate
+        if head and lg is None:
+            return 'stray'
+        if not head and lg is not None:
+            return 'missing'
+        return None
+
+    def _track_box_heat(self):
+        for unit in self.box_units:
+            if self.unit_climate(unit)[3]:
+                self._box_heat[unit] = self.now
+
+    def load_slot(self, gate, checked=False):
+        if not checked:
+            warn = self.warm_box(gate)
+            if warn is None and self.head_mismatch() == 'stray':
+                warn = _('Am Druckkopf steckt Filament, obwohl kein Slot geladen ist - '
+                         'vermutlich ein Rest im Schlauch. Erst entfernen, sonst klemmt es.')
+            if warn:
+                self.confirm(_('Slot %s trotzdem laden?') % model.letter(gate), warn,
+                             _('Laden'), lambda: self.load_slot(gate, True), danger=False)
+                return
         self.ui['sel_slot'] = gate
         cmd = self.box_cmd('cmd_load', gate=gate)
         self.gcode(cmd, _('Slot %s wird geladen ...') % model.letter(gate),
@@ -434,6 +498,7 @@ class App(object):
     def confirm_eject(self, gate):
         cmd = self.box_cmd('cmd_eject', gate=gate)
         self.confirm(_('Slot %s auswerfen?') % model.letter(gate),
+                     self.warm_box(gate) or
                      _('Das Filament wird ganz aus der Box geschoben (vorher ggf. aus der Düse '
                        'entladen). Danach kann die Spule entnommen werden.'), _('Auswerfen'),
                      lambda: self.gcode(cmd, _('Slot %s wird ausgeworfen ...') % model.letter(gate),
@@ -544,25 +609,70 @@ class App(object):
                                                  / 60.0)))}
             else:
                 p = self.profiles[idx] if self.profiles else ('PLA', 55, 12, [])
-                sel = {'profile': idx, 'temp': p[1], 'hours': int(p[2])}
+                sel = {'profile': idx, 'temp': min(p[1], self.dry_cap()[0]), 'hours': int(p[2])}
             self.ui['dry'] = sel
         return sel
 
+    def dry_cap(self):
+        """Höchste erlaubte Trocknungstemperatur für Box 1 -> (cap, grund, blocker).
+        grund = (Material, [Slots]) der begrenzenden Belegung; blocker = eingelegte PLA/TPU-
+        Slots (die erst ausgeworfen werden müssen). Zählt jede Spule mit hinterlegtem Material,
+        auch ausgeworfene: sie liegen beim Trocknen ja in der Box."""
+        def build():
+            cap, reason, blockers = self.cfg.getint('box', 'dry_max_temp'), None, []
+            # QIDIs Grenze schützt Filament in den Schläuchen: gilt nur, solange etwas eingelegt ist
+            inserted = any(s.state in ('ready', 'loaded', 'loading', 'unloading')
+                           for s in self.slots[:4])
+            for s in self.slots[:4]:
+                if not s.material:
+                    continue
+                bm = self.gate_box_max(s.index)
+                if model.dry_sensitive(s.material, bm):
+                    lim = model.DRY_SENSITIVE_MAX
+                    if s.state in ('ready', 'loaded', 'loading', 'unloading'):
+                        blockers.append(s.index)
+                elif bm and inserted:
+                    lim = bm
+                else:
+                    continue
+                mat = model.base_type(s.material)
+                if lim < cap:
+                    cap, reason = lim, (mat, [s.letter], not model.dry_sensitive(s.material, bm))
+                elif lim == cap and reason and reason[0] == mat:
+                    reason[1].append(s.letter)
+            return cap, reason, blockers
+        return self._cached('drycap', build)
+
     def dry_set_profile(self, idx):
         p = self.profiles[idx]
-        maxt = self.cfg.getint('box', 'dry_max_temp')
-        self.ui['dry'] = {'profile': idx, 'temp': min(p[1], maxt), 'hours': int(p[2])}
+        self.ui['dry'] = {'profile': idx, 'temp': min(p[1], self.dry_cap()[0]),
+                          'hours': int(p[2])}
         self.mark_dirty()
 
     def dry_adjust(self, temp=0, hours=0):
         sel = dict(self.dry_selection())
-        maxt = self.cfg.getint('box', 'dry_max_temp')
-        sel['temp'] = max(35, min(maxt, sel['temp'] + temp))
+        sel['temp'] = max(35, min(self.dry_cap()[0], sel['temp'] + temp))
         sel['hours'] = max(1, min(48, sel['hours'] + hours))
         self.ui['dry'] = sel
         self.mark_dirty()
 
     def dry_start(self):
+        blockers = self.dry_cap()[2]
+        if blockers:
+            names = ', '.join(model.letter(g) for g in blockers)
+            mats = '/'.join(sorted(set(model.base_type(self.slots[g].material)
+                                       for g in blockers)))
+            title = _('%s in Slot %s eingelegt') % (mats, names)
+            text = _('PLA und TPU nur ausgeworfen trocknen: In den Schläuchen am beheizten '
+                     'Boxboden werden sie weich und können klemmen.')
+            if self.can_eject_all():
+                self.open_dialog(dialogs.ChoiceDialog(
+                    self, title, text,
+                    [('no', _('Abbrechen'), 'secondary', None, 1),
+                     ('eject', _('Alle auswerfen'), 'primary', self.eject_all, 1)]))
+            else:
+                self.info(title, text)
+            return
         if self.drying.active:
             self._dry_start()
             return
@@ -663,8 +773,7 @@ class App(object):
 
     def _dry_start(self):
         sel = self.dry_selection()
-        maxt = self.cfg.getint('box', 'dry_max_temp')
-        temp = min(sel['temp'], maxt)
+        temp = min(sel['temp'], self.dry_cap()[0])
         minutes = sel['hours'] * 60
         name = self.profiles[sel['profile']][0] if self.profiles else _('Manuell')
         hum = self.climate[2]
@@ -705,8 +814,40 @@ class App(object):
                      _('Abbrechen'), stop, ok_icon='stop')
 
     # --- Druck -----------------------------------------------------------------
+    # --- Werkzeug -> Slot vor dem Druck ------------------------------------------
+    def tool_map_candidates(self):
+        """Wählbare Quellen: eingelegte Box-Slots, dazu das Rack mit hinterlegtem Material."""
+        out = [s for s in self.slots if s.state in ('ready', 'loaded')]
+        if self.rack.material:
+            out.append(self.rack)
+        return out
+
+    def wants_tool_map(self, meta):
+        return (self.st.mmu.get('source') == 'qidi' and self.has_box
+                and bool(model.file_tools(meta)))
+
+    def start_print_mapped(self, path, mapping):
+        """Zuordnung setzen wie QIDIs Weboberfläche (value_tN = 'slotM'), dann drucken."""
+        lines = []
+        for t in sorted(mapping):
+            g = mapping[t]
+            if g is None:
+                continue
+            slot = qidi.SLOT_EXTERNAL if g == model.HH_GATE_BYPASS else g
+            lines.append('SAVE_VARIABLE VARIABLE=value_t%d VALUE="\'slot%d\'"' % (t, slot))
+
+        def go():
+            self.rpc_call('printer.print.start', {'filename': path}, _('Druck wird gestartet ...'))
+        if lines:
+            self.gcode('\n'.join(lines), on_done=go)
+        else:
+            go()
+
     def confirm_print(self, path):
         meta = self.file_meta(path)
+        if self.wants_tool_map(meta):
+            self.open_dialog(dialogs.ToolMapDialog(self, path, meta))
+            return
         extra = ''
         if meta.get('estimated_time'):
             extra = ' ' + _('Dauer laut Slicer: %s.') % model.fmt_duration(meta['estimated_time'])
@@ -1445,6 +1586,7 @@ class App(object):
             self.mark_dirty()
         self._check_free_move()
         self._eject_step()
+        self._track_box_heat()
         if self._toast and self._toast[2] < now:
             self._toast = None
             self.mark_dirty()

@@ -328,6 +328,30 @@ def s_drying_confirm_empty(app):
     app.dry_start()
 
 
+def s_filament_stray(app):
+    app.st.update({'mmu': {'gate': -1, 'filament_pos': 0},
+                   'hall_filament_width_sensor': {'Diameter': 1.85}})
+    app._status_changed()
+    app.go('filament', sel_slot=1)
+
+
+def s_load_warm_box(app):
+    app.st.update({'mmu': {'gate': -1, 'filament_pos': 0},
+                   'temperature_sensor unit0_Env': {'temperature': 41.0, 'humidity': 12.0}})
+    app._status_changed()
+    app.go('filament', sel_slot=0)
+    app.load_slot(0)
+
+
+def s_drying_qidi_limit(app):
+    app.st.update({'mmu': {'gate_status': [1, 1, 1, 0], 'gate': -1, 'filament_pos': 0,
+                           'gate_material': ['PETG', 'PETG', 'ASA', ''],
+                           'gate_filament_name': ['PETG Rapido', 'PETG Rapido', 'ASA', ''],
+                           'gate_box_max': [45, 45, 45, None]}})
+    app._status_changed()
+    app.go('drying')
+
+
 def s_files(app):
     app.go('files')
 
@@ -465,6 +489,32 @@ def _two_boxes(app):
     _qidi_status(app, [box1, box2, off, off], 'slot5')
 
 
+def _tool_map_setup(app):
+    box = _qidi_box(3, [('PETG Rapido', 'PETG', '#1714B0'), ('PETG Rapido', 'PETG', '#FF362D'),
+                        ('ASA', 'ASA', '#FAFAFA')])
+    _qidi_status(app, [box], '')
+    app._meta['front.gcode'] = dict(FRONT_META, used_extruders=[0, 1, 2],
+                                    filament_type='PETG;PETG;ASA;PLA',
+                                    preset_colours=['#FF362D', '#1714B0', '#FAFAFA', '#FAFAFA'])
+
+
+def s_print_tool_map(app):
+    _tool_map_setup(app)
+    app.go('files')
+    app.confirm_print('front.gcode')
+
+
+def s_print_tool_map_missing(app):
+    _tool_map_setup(app)
+    app._meta['front.gcode']['used_extruders'] = [0, 3]
+    app.go('files')
+    app.confirm_print('front.gcode')
+
+
+def s_tune_light(app):
+    s_tune(app)
+
+
 def s_filament_two_boxes(app):
     _two_boxes(app)
     app.go('filament', box_unit=1)
@@ -578,4 +628,9 @@ SCENARIOS = [
     ('42_anzeige_vorschau_scharf', s_system_display_sharp),
     ('43_trocknung_rueckfrage', s_drying_confirm),
     ('44_trocknung_rueckfrage_leer', s_drying_confirm_empty),
+    ('45_filament_rest_im_schlauch', s_filament_stray),
+    ('46_laden_box_warm', s_load_warm_box),
+    ('47_trocknung_qidi_grenze', s_drying_qidi_limit),
+    ('48_druck_zuordnung', s_print_tool_map),
+    ('49_druck_zuordnung_rack', s_print_tool_map_missing),
 ]

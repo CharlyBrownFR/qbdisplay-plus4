@@ -199,6 +199,14 @@ class BoxPage(Page):
                          'Dauer ca. 3-4 min.') % (src.letter, s.letter)
             else:
                 desc = _('%s wird bis in die Düse geladen und gespült. Dauer ca. 2 min.') % s.letter
+        mismatch = None if printing else ctx.head_mismatch()
+        warn = False
+        if mismatch == 'stray' and s.state == 'ready':
+            desc, warn = _('Filament am Druckkopf, aber kein Slot geladen - vermutlich ein '
+                           'Rest im Schlauch. Erst entfernen.'), True
+        elif mismatch == 'missing' and s.state == 'loaded':
+            desc, warn = _('Am Druckkopf ist kein Filament, die Box meldet %s aber als '
+                           'geladen. Entladen setzt das zurück.') % s.letter, True
         if is_rack:
             title = _('Rack · externe Spule')
         else:
@@ -213,9 +221,9 @@ class BoxPage(Page):
                 W.color_dot(c, x + 11, r.y + 27, 11, s.color, 'surface')
                 x += 32
             c.text(x, r.y + 15, r.x2 - 16 - x, 24, title, F.BTN, 'text', 'surface')
-            W.text_lines(c, r.x + 16, r.y + 52, r.w - 32, desc, F.TEXT, 'text2', 'surface',
-                         max_lines=2)
-        frame.region('act', tile, (title, desc, s.color), paint_tile)
+            W.text_lines(c, r.x + 16, r.y + 52, r.w - 32, desc, F.TEXT,
+                         'warn' if warn else 'text2', 'surface', max_lines=2)
+        frame.region('act', tile, (title, desc, s.color, warn), paint_tile)
         can_edit = not is_rack
         can_eject = (not is_rack) and s.state in ('ready', 'loaded', 'unknown') and not printing
         pw = tile.w - 32 - (2 * 72 if side else 0)

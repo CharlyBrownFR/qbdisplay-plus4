@@ -43,7 +43,9 @@ class EjectAllTest(unittest.TestCase):
         self.rpc = self.app.rpc = HoldingRpc()
         # Slot A und C eingelegt, nichts geladen
         self.app.st.update({'mmu': {'gate_status': [1, 0, 1, 0], 'gate': -1,
-                                    'filament_pos': 0, 'action': 'Idle'}})
+                                    'filament_pos': 0, 'action': 'Idle',
+                                    'gate_material': ['PETG', 'PETG', 'ASA', ''],
+                                    'gate_filament_name': ['', '', '', '']}})
         self.app._status_changed()
         self.app.go('drying')
         self.app.render()
@@ -116,6 +118,39 @@ class EjectAllTest(unittest.TestCase):
         self.tick(3)
         self.assertEqual(len(self.rpc.scripts), 1)
         self.assertIsNone(self.app._eject_queue)
+
+    def test_pla_inserted_only_eject(self):
+        from qbdisplay.ui.dialogs import ChoiceDialog
+        self.app.st.update({'mmu': {'gate_material': ['PLA', 'PETG', 'ASA', '']}})
+        self.app._status_changed()
+        self.app._cache.clear()
+        self.app.dry_start()
+        self.app.render()
+        self.assertIsInstance(self.app.dialog, ChoiceDialog)
+        self.assertIn('PLA', self.app.dialog.title)
+        tids = [t.tid for t in self.app.frame.targets]
+        self.assertIn('eject', tids)
+        self.assertNotIn('yes', tids)                # kein Trotzdem
+
+    def test_cap_by_pla_spool_even_ejected(self):
+        self.app.st.update({'mmu': {'gate_status': [0, 0, 0, 0],
+                                    'gate_material': ['PLA', 'ABS', '', '']}})
+        self.app._status_changed()
+        self.app._cache.clear()
+        cap, why, blockers = self.app.dry_cap()
+        self.assertEqual((cap, why[0], blockers), (45, 'PLA', []))
+        self.app.dry_set_profile(2)                  # ABS/ASA 60 °C
+        self.assertEqual(self.app.dry_selection()['temp'], 45)
+
+    def test_qidi_box_limit_only_while_inserted(self):
+        self.app.st.update({'mmu': {'gate_box_max': [45, 45, 45, None]}})
+        self.app._status_changed()
+        self.app._cache.clear()
+        self.assertEqual(self.app.dry_cap()[0], 45)
+        self.app.st.update({'mmu': {'gate_status': [0, 0, 0, 0]}})
+        self.app._status_changed()
+        self.app._cache.clear()
+        self.assertEqual(self.app.dry_cap()[0], 65)
 
     def test_no_answer_gives_up(self):
         self.app.eject_all()

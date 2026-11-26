@@ -111,6 +111,7 @@ def synth_mmu(st, num_slots=4):
     boxes = _boxes(st)
     num_slots = max(num_slots, 4 * len(boxes))
     gate_status, material, name, color, vendor, temps = [], [], [], [], [], []
+    box_max = []
     for i in range(num_slots):
         b = boxes[i // 4] if i // 4 < len(boxes) else {}
         k = i % 4
@@ -126,6 +127,8 @@ def synth_mmu(st, num_slots=4):
         vendor.append(info.get('vendor_str') or '')
         lo, hi = info.get('min_temp'), info.get('max_temp')
         temps.append((int(lo), int(hi)) if lo and hi else None)
+        bm = info.get('box_max_temp')
+        box_max.append(int(bm) if isinstance(bm, (int, float)) else None)
     units = units_online(st)
     loaded = slot_number(be.get('loaded_slot'))
     if loaded is None and not units and be.get('loaded_slot', '') == '':
@@ -160,6 +163,7 @@ def synth_mmu(st, num_slots=4):
         'gate_color': color,
         'gate_vendor': vendor,
         'gate_temps': temps,
+        'gate_box_max': box_max,
         'ttg_map': ttg,
         'drying_state': drying,
         'drying_end': [int(b.get('end_time') or 0) for b in boxes],

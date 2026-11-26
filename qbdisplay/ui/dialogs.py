@@ -152,6 +152,94 @@ class ChoiceDialog(Dialog):
         return run
 
 
+class ToolMapDialog(Dialog):
+    """Vor dem Druck: welches Werkzeug der Datei aus welchem Slot kommt. Antippen eines
+    Slots schaltet zur nächsten Quelle weiter."""
+    box = Rect(110, 52, 580, 400)
+    MAX_ROWS = 5
+
+    def __init__(self, ctx, path, meta):
+        Dialog.__init__(self, ctx)
+        self.path, self.meta = path, meta
+        self.tools = model.file_tools(meta)[:self.MAX_ROWS]
+        self.cands = ctx.tool_map_candidates()
+        self.mapping = model.suggest_tool_map(
+            self.tools, [(s.index, s.material, s.color) for s in self.cands])
+        self.layer = ('toolmap', path)
+
+    def _source(self, gate):
+        for s in self.cands:
+            if s.index == gate:
+                return s
+        return None
+
+    def cycle(self, t):
+        order = [s.index for s in self.cands]
+        if not order:
+            return
+        cur = self.mapping.get(t)
+        nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else order[0]
+        self.mapping[t] = nxt
+        self.ctx.mark_dirty()
+
+    def ready(self):
+        return bool(self.tools) and all(self.mapping.get(t) is not None
+                                        for t, _m, _c in self.tools)
+
+    def _print(self):
+        self.ctx.close_dialog()
+        self.ctx.start_print_mapped(self.path, dict(self.mapping))
+
+    def build(self, frame):
+        ctx = self.ctx
+        b = self.box
+        self.frame_box(frame)
+        name = model.short_filename(self.path)
+
+        def paint_t(c, r):
+            kicker(c, r.x, r.y, _('Filament zuordnen - Slot antippen zum Wechseln'), 'accent')
+            c.text(r.x, r.y + 22, r.w, 30, name, F.TITLE, 'text', 'surface')
+        frame.region('dlg.title', Rect(b.x + 24, b.y + 18, b.w - 48, 54), name, paint_t,
+                     clear='surface')
+        n = max(1, len(self.tools))
+        rh = min(64, (b.y2 - 20 - 64 - 12 - (b.y + 82)) // n)
+        for i, (t, typ, col) in enumerate(self.tools):
+            y = b.y + 82 + i * rh
+            g = self.mapping.get(t)
+            src = self._source(g)
+            ok = src is not None and model.base_type(src.material) == model.base_type(typ)
+            left = Rect(b.x + 24, y, 230, rh - 8)
+
+            def paint_l(c, r, t=t, typ=typ, col=col, i=i):
+                W.color_dot(c, r.x + 14, r.cy, 12, col, 'surface')
+                c.text(r.x + 36, r.cy - 12, r.w - 36, 24, 'T%d · %s' % (t + 1, typ or '?'),
+                       F.BTN, 'text', 'surface')
+            frame.region('dlg.l%d' % i, left, (t, typ, col), paint_l, clear='surface')
+            sr = Rect(b.x + 270, y, b.w - 294, rh - 8)
+            tid = 'map.%d' % t
+            pr = ctx.pressed == tid
+            if src is None:
+                label, dot = _('kein passender Slot'), None
+            else:
+                label = '%s · %s' % (src.letter, src.name or src.material or '?')
+                dot = src.color
+
+            def paint_s(c, r, label=label, dot=dot, ok=ok, pr=pr):
+                W.tile(c, r, fill='surface2' if not pr else 'surface3', under='surface')
+                x = r.x + 14
+                if dot:
+                    W.color_dot(c, x + 10, r.cy, 10, dot, 'surface2' if not pr else 'surface3')
+                    x += 30
+                c.text(x, r.cy - 11, r.x2 - 12 - x, 22, label, F.LBL, 'text' if ok else 'warn',
+                       'surface2' if not pr else 'surface3')
+            frame.region('dlg.' + tid, sr, (label, dot, ok, pr), paint_s, clear='surface')
+            frame.target(tid, sr, (lambda t=t: self.cycle(t)))
+        self.buttons(frame, [
+            ('no', _('Abbrechen'), 'secondary', None, ctx.close_dialog, 1),
+            ('yes', _('Drucken'), 'primary' if self.ready() else 'disabled', None,
+             self._print, 1)])
+
+
 class InfoDialog(Dialog):
     def __init__(self, ctx, title, text):
         Dialog.__init__(self, ctx)
@@ -399,4 +487,8 @@ class TuneDialog(Dialog):
                     W.plus_minus(c, r, sign, 'surface', pressed=pr)
                 frame.region('dlg.' + tid, br, pr, paint_pm, clear='surface')
                 frame.target(tid, br, act)
-        self.buttons(frame, [('ok', _('Schließen'), 'primary', None, ctx.close_dialog, 1)])
+        pin = 'output_pin ' + ctx.cfg.get('printer', 'light_pin')
+        light = bool(st.get(pin, 'value', 0))
+        self.buttons(frame, [('light', _('Licht aus') if light else _('Licht an'), 'secondary',
+                              None, ctx.toggle_light, 1),
+                             ('ok', _('Schließen'), 'primary', None, ctx.close_dialog, 1)])

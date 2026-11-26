@@ -301,6 +301,77 @@ def humidity_rating(humidity, materials):
     return 'err', _('für %s viel zu feucht') % t
 
 
+# Materialien, die in den Zuführschläuchen am beheizten Boxboden weich werden (QIDI: Box-Grenze 0)
+DRY_SENSITIVE = ('PLA', 'TPU')
+DRY_SENSITIVE_MAX = 45      # °C, nur ausgeworfen
+COOL_TEMP = 35              # °C: darunter ist eine Box wieder kalt genug für PLA/TPU
+COOL_MINUTES = 30           # so lange nach dem Heizen gilt sie noch als warm
+
+
+def dry_sensitive(material, box_max=None):
+    """PLA/TPU oder von QIDI mit Box-Grenze 0 belegt."""
+    if not material:
+        return False
+    return base_type(material) in DRY_SENSITIVE or box_max == 0
+
+
+def head_filament(st, min_diameter=0.3):
+    """Filament am Druckkopf laut Breitensensor (QIDIs eigene Regel: Durchmesser über
+    min_diameter). None = kein Sensor."""
+    hs = st.obj('hall_filament_width_sensor')
+    d = hs.get('Diameter')
+    if not isinstance(d, (int, float)):
+        return None
+    return d > min_diameter
+
+
+def file_tools(meta):
+    """Benutzte Werkzeuge einer Druckdatei (QIDIs Moonraker-Metadaten) ->
+    [(werkzeug, material, '#RRGGBB' oder None)]; leer, wenn die Datei nichts dazu sagt."""
+    used = meta.get('used_extruders')
+    if not isinstance(used, list) or not used:
+        return []
+    types = str(meta.get('filament_type') or '').split(';')
+    cols = meta.get('preset_colours') or meta.get('filament_colors') or []
+    out = []
+    for t in used:
+        if not isinstance(t, int) or t < 0:
+            continue
+        typ = types[t].strip() if t < len(types) else ''
+        col = cols[t] if t < len(cols) and cols[t] else None
+        out.append((t, typ, col))
+    return out
+
+
+def suggest_tool_map(tools, candidates):
+    """Vorschlag Werkzeug -> Slot wie QIDIs Weboberfläche: gleiches Material, nächste Farbe,
+    jeder Slot nur einmal. tools: [(t, material, farbe)], candidates: [(gate, material, farbe)].
+    -> {t: gate oder None}"""
+    from .colors import hex_to_rgb
+
+    def dist(a, b):
+        ra, rb = hex_to_rgb(a), hex_to_rgb(b)
+        if ra is None or rb is None:
+            return 3 * 255 * 255
+        return sum((x - y) * (x - y) for x, y in zip(ra, rb))
+    free = list(candidates)
+    out = {}
+    for t, typ, col in tools:
+        best = None
+        for cand in free:
+            if base_type(cand[1]) != base_type(typ):
+                continue
+            d = dist(col, cand[2])
+            if best is None or d < best[0]:
+                best = (d, cand)
+        if best is None:
+            out[t] = None
+        else:
+            out[t] = best[1][0]
+            free.remove(best[1])
+    return out
+
+
 def suggest_profile(profiles, materials):
     """Profil für die Belegung: niedrigste Temperatur, bei Gleichstand das
     feuchteempfindlichere Material. -> (index, grund-material) oder (0, None)."""

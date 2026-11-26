@@ -78,6 +78,7 @@ class DryingPage(Page):
             c.fill_rect(r, 'bg')
             W.caption(c, r.x, r.y, _('Profil'), 'bg')
         frame.region('cap', Rect(100, 204, 200, 18), 0, paint_cap, opaque=True)
+        cap, why_cap, _blk = ctx.dry_cap()
         n = max(1, len(profiles))
         pw = (420 - 8 * (n - 1)) // n
         for i, (name, ptemp, hours, types) in enumerate(profiles):
@@ -85,7 +86,7 @@ class DryingPage(Page):
             on = i == sel['profile']
             tid = 'prof.%d' % i
             pr = ctx.pressed == tid
-            sub = '%d °C · %d h' % (ptemp, hours)
+            sub = '%d °C · %d h' % (min(ptemp, cap), hours)
 
             def paint(c, r, name=name, sub=sub, on=on, pr=pr):
                 W.button(c, r, name, 'selected' if on else 'secondary', None, 'bg', sub=sub,
@@ -101,13 +102,19 @@ class DryingPage(Page):
             hint = (_('Vorschlag aus der Belegung: Slot %s enthält %s.') if len(which) == 1
                     else _('Vorschlag aus der Belegung: Slot %s enthalten %s.')) % (
                 ', '.join(which), why)
-            if len(others) > 1:
+            if len(others) > 1 and not why_cap:
                 hint += ' ' + _('Bei gemischter Belegung gilt das Profil mit der niedrigsten '
                                 'Temperatur.')
             hint += ' ' + _('Vorher Filament auswerfen und Enden festklemmen, die Spulen drehen sich.')
         else:
             hint = _('Keine Slot-Belegung bekannt. Profil passend zum Material wählen.') + \
                 ' ' + _('Vorher Filament auswerfen und Enden festklemmen, die Spulen drehen sich.')
+        if why_cap and why_cap[2]:
+            hint += ' ' + _('Eingelegt max. %d °C (QIDI-Grenze %s), ausgeworfen mehr.') % (
+                cap, why_cap[0])
+        elif why_cap:
+            hint += ' ' + _('Höchstens %d °C wegen %s in Slot %s.') % (
+                cap, why_cap[0], ', '.join(why_cap[1]))
         info = Rect(100, 314, 420, 154)
 
         def paint_info(c, r):
@@ -129,7 +136,7 @@ class DryingPage(Page):
             c.fill(r.x + 14, r.y + 224, r.w - 28, 1, 'line')
             W.caption(c, r.x + 14, r.y + 239, _('Fertig ca.'), 'surface')
         frame.region('right', right, 0, paint_right)
-        maxt = ctx.cfg.getint('box', 'dry_max_temp')
+        maxt = cap
         rows = [('t', right.y + 70, '%d °C' % sel['temp'],
                  lambda: ctx.dry_adjust(temp=-5), lambda: ctx.dry_adjust(temp=+5),
                  sel['temp'] > 35, sel['temp'] < maxt),

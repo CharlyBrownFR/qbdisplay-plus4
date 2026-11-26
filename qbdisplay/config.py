@@ -55,6 +55,8 @@ DEFAULTS = {
         'climate_sensor': 'temperature_sensor unit0_Env',
         'filament_list': '~/printer_data/config/filament_list.cfg',
         'dry_max_temp': '65',
+        # Filament am Druckkopf, wenn der Breitensensor mehr als das misst (QIDI: min_diameter)
+        'filament_min_diameter': '0.3',
         'purge_seconds': '150',
         'pre_gate_sensor': 'mmu_entry_%d',
         'gate_sensor': 'mmu_shared_exit',
@@ -77,10 +79,10 @@ DEFAULTS = {
     },
     'drying': {
         # Name = Temperatur °C, Dauer h, Materialtypen
-        'PLA': '55, 12, PLA PLA-CF PLA+',
+        'PLA': '45, 12, PLA PLA-CF PLA+',
         'PETG': '55, 12, PETG PETG-CF PET PCTG',
         'ABS/ASA': '60, 12, ABS ASA ABS-GF ASA-CF',
-        'TPU': '60, 12, TPU TPE',
+        'TPU': '45, 12, TPU TPE',
     },
     'network': {
         # optionale Befehle für den Nur-LAN-Schalter (z. B. sudo -n Skripte)

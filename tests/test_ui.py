@@ -167,7 +167,12 @@ class AppFlowTest(unittest.TestCase):
         self.assertEqual(gcodes(app), ['M106 S128'])
 
     def test_drying_start_capped(self):
-        app, _ = self.make(scenarios.s_drying_select)
+        def setup(app):
+            app.st.update({'mmu': {'gate_material': ['PA', 'PA', 'PA', ''],
+                                   'gate_filament_name': ['', '', '', '']}})
+            app._status_changed()
+            scenarios.s_drying_select(app)
+        app, _ = self.make(setup)
         for _ in range(5):
             self.tap(app, 'adj.t+')
             if 'adj.t+' not in [t.tid for t in app.frame.targets]:
